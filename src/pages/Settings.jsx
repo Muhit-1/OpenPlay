@@ -9,6 +9,10 @@ export default function Settings() {
   const [testing,  setTesting]  = useState(false);
   const [testMsg,  setTestMsg]  = useState(null);
   const [saved,    setSaved]    = useState(false);
+  const [extraUrls, setExtraUrls] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('extra_urls') || '[]'); } catch { return []; }
+  });
+  const [newUrl, setNewUrl] = useState('');
 
   const handleTest = async () => {
     if (!ispUrl.trim()) return;
@@ -37,6 +41,7 @@ export default function Settings() {
   const handleSave = () => {
     const url = ispUrl.trim().endsWith('/') ? ispUrl.trim() : ispUrl.trim() + '/';
     localStorage.setItem('isp_url', url);
+    localStorage.setItem('extra_urls', JSON.stringify(extraUrls));
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
@@ -46,8 +51,21 @@ export default function Settings() {
 
   const handleClear = () => {
     localStorage.removeItem('isp_url');
+    localStorage.removeItem('extra_urls');
     setIspUrl('');
+    setExtraUrls([]);
     setTestMsg(null);
+  };
+
+  const handleAddUrl = () => {
+    if (!newUrl.trim()) return;
+    const url = newUrl.trim().endsWith('/') ? newUrl.trim() : newUrl.trim() + '/';
+    setExtraUrls(prev => [...prev, url]);
+    setNewUrl('');
+  };
+
+  const handleRemoveUrl = (index) => {
+    setExtraUrls(prev => prev.filter((_, i) => i !== index));
   };
 
   return (
@@ -59,17 +77,17 @@ export default function Settings() {
       {/* ── Server URL ── */}
       <section className="mb-10">
         <label className="block text-zinc-300 text-sm font-semibold mb-2" htmlFor="isp-url">
-          Server URL
+          Primary Server URL
         </label>
         <p className="text-zinc-500 text-xs mb-3">
-          The base URL of your ISP's open HTTP directory — e.g. <code className="text-zinc-400">http://172.16.50.12/</code>
+          The base URL of your ISP's open HTTP directory — e.g. <code className="text-zinc-400">http://172.16.50.12/DHAKA-FLIX-12/</code>
         </p>
         <input
           id="isp-url"
           type="url"
           value={ispUrl}
           onChange={e => { setIspUrl(e.target.value); setTestMsg(null); setSaved(false); }}
-          placeholder="http://172.16.50.12/"
+          placeholder="http://172.16.50.12/DHAKA-FLIX-12/"
           className="w-full bg-zinc-800 text-white text-sm rounded-xl px-4 py-3 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500 placeholder-zinc-600 font-mono"
         />
 
@@ -106,10 +124,47 @@ export default function Settings() {
               onClick={handleClear}
               className="text-zinc-500 hover:text-red-400 text-sm transition-colors px-2"
             >
-              Clear
+              Clear all
             </button>
           )}
         </div>
+      </section>
+
+      {/* ── Additional Server URLs ── */}
+      <section className="mb-10">
+        <label className="block text-zinc-300 text-sm font-semibold mb-2">
+          Additional Server URLs
+        </label>
+        <p className="text-zinc-500 text-xs mb-3">
+          Add more server IPs if your ISP has content spread across multiple servers.
+        </p>
+        <div className="flex gap-2 mb-3">
+          <input
+            type="url"
+            value={newUrl}
+            onChange={e => setNewUrl(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddUrl()}
+            placeholder="http://172.16.50.14/DHAKA-FLIX-14/"
+            className="flex-1 bg-zinc-800 text-white text-sm rounded-xl px-4 py-3 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-red-500 placeholder-zinc-600 font-mono"
+          />
+          <button
+            onClick={handleAddUrl}
+            className="bg-zinc-700 hover:bg-zinc-600 text-white text-sm px-4 py-2 rounded-xl transition-colors"
+          >
+            Add
+          </button>
+        </div>
+        {extraUrls.length === 0 && (
+          <p className="text-zinc-600 text-xs italic">No additional servers added yet.</p>
+        )}
+        {extraUrls.map((url, i) => (
+          <div key={i} className="flex items-center justify-between bg-zinc-800 rounded-lg px-4 py-2 mb-2">
+            <span className="text-zinc-300 text-sm font-mono truncate">{url}</span>
+            <button onClick={() => handleRemoveUrl(i)} className="text-zinc-500 hover:text-red-400 ml-3 text-xs flex-shrink-0">
+              Remove
+            </button>
+          </div>
+        ))}
       </section>
 
       {/* ── Info section ── */}

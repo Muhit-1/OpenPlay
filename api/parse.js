@@ -30,10 +30,17 @@ function parseDirectoryHTML(html, baseUrl) {
       continue;
     }
 
-    // Normalise to absolute URL
-    const absoluteUrl = href.startsWith('http')
-      ? href
-      : baseUrl.replace(/\/$/, '') + '/' + href.replace(/^\//, '');
+let absoluteUrl;
+if (href.startsWith('http')) {
+  absoluteUrl = href;
+} else if (href.startsWith('/')) {
+  // Absolute path — attach just the origin (http://172.16.50.12)
+  const origin = new URL(baseUrl).origin;
+  absoluteUrl = origin + href;
+} else {
+  // Relative path — attach to base as-is
+  absoluteUrl = baseUrl.replace(/\/$/, '') + '/' + href;
+}
 
     if (href.endsWith('/')) {
       // It's a folder
@@ -72,8 +79,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Fetch through our own proxy (same origin, no CORS issue on the server)
-    const proxyUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/proxy?url=${encodeURIComponent(url)}`;
+   
+   const proto = req.headers['x-forwarded-proto'] || 'http';
+const proxyUrl = `${proto}://${req.headers.host}/api/proxy?url=${encodeURIComponent(url)}`;
     const response = await fetch(proxyUrl, {
       signal: AbortSignal.timeout(12000),
     });

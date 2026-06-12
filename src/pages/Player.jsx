@@ -9,24 +9,25 @@ import { fetchMeta, fetchDirectory } from '../lib/tmdb';
 import { saveProgress, getProgress } from '../lib/firebase';
 
 export default function Player() {
-  const { encodedUrl }  = useParams();
-  const location        = useLocation();
-  const navigate        = useNavigate();
-  const fileUrl         = decodeURIComponent(encodedUrl);
+  const { encodedUrl } = useParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const fileUrl = decodeURIComponent(encodedUrl);
+  const codecWarning = detectCodecWarning(fileUrl);
 
   // State from navigation (optional)
   const passedFile = location.state?.file;
   const passedMeta = location.state?.meta;
 
-  const videoRef   = useRef(null);
-  const playerRef  = useRef(null);
+  const videoRef = useRef(null);
+  const playerRef = useRef(null);
 
-  const [meta,       setMeta]       = useState(passedMeta || null);
-  const [siblings,   setSiblings]   = useState([]); // other files in same folder
-  const [subtitles,  setSubtitles]  = useState([]); // external .srt/.vtt files
-  const [activeSub,  setActiveSub]  = useState(null);
-  const [resumed,    setResumed]    = useState(false);
-  const [resumeAt,   setResumeAt]   = useState(0);
+  const [meta, setMeta] = useState(passedMeta || null);
+  const [siblings, setSiblings] = useState([]); // other files in same folder
+  const [subtitles, setSubtitles] = useState([]); // external .srt/.vtt files
+  const [activeSub, setActiveSub] = useState(null);
+  const [resumed, setResumed] = useState(false);
+  const [resumeAt, setResumeAt] = useState(0);
   const [showResume, setShowResume] = useState(false);
 
   // ── Fetch metadata if not passed ──
@@ -47,17 +48,22 @@ export default function Player() {
           .filter(f => f.type === 'subtitle')
           .map(f => {
             const baseName = f.name.replace(/\.[^.]+$/, '');
-            const lang     = f.name.match(/\.(en|hi|bn|fr|de|es|ja|ko|zh)\./i)?.[1] || 'und';
+            const langMatch = f.name.match(/\b(english|hindi|bangla|bengali|french|german|spanish|japanese|korean|chinese)\b/i)
+              || f.name.match(/\.(en|hi|bn|fr|de|es|ja|ko|zh)\./i);
+            const lang = langMatch?.[1] || 'und';
+            const langLabel = lang === 'und' ? 'Subtitle' : lang.charAt(0).toUpperCase() + lang.slice(1).toLowerCase();
             return {
-              label: `${baseName} (${lang.toUpperCase()})`,
+              label: `${langLabel}`,
               language: lang,
-              src: f.url,
+              src: f.url.toLowerCase().endsWith('.srt')
+                ? `/api/proxy?url=${encodeURIComponent(f.url)}`
+                : f.url,
               kind: 'subtitles',
             };
           });
         setSubtitles(subs);
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [fileUrl]);
 
   // ── Load saved progress ──
@@ -69,18 +75,22 @@ export default function Player() {
           setShowResume(true);
         }
       })
-      .catch(() => {});
+      .catch(() => { });
   }, [fileUrl]);
 
   // ── Initialise Video.js ──
   useEffect(() => {
     if (!videoRef.current) return;
+    if (playerRef.current) return; // already initialized, don't double-init
 
-    const player = videojs(videoRef.current, {
+    const videoElement = videoRef.current;
+    if (!videoElement.isConnected) return; // not in DOM yet, skip
+
+    const player = videojs(videoElement, {
       controls: true,
       autoplay: true,
-      preload:  'auto',
-      fluid:    true,
+      preload: 'auto',
+      fluid: true,
       playbackRates: [0.5, 0.75, 1, 1.25, 1.5, 2],
       sources: [{ src: fileUrl, type: guessType(fileUrl) }],
     });
@@ -90,7 +100,7 @@ export default function Player() {
     // Save progress every 30 s
     const interval = setInterval(() => {
       if (player.paused()) return;
-      const current  = player.currentTime();
+      const current = player.currentTime();
       const duration = player.duration() || 0;
       if (current > 5) {
         saveProgress(
@@ -99,16 +109,16 @@ export default function Player() {
           meta?.poster || null,
           current,
           duration
-        ).catch(() => {});
+        ).catch(() => { });
       }
     }, 30_000);
 
     // Also save on pause/end
     const onPause = () => {
-      const current  = player.currentTime();
+      const current = player.currentTime();
       const duration = player.duration() || 0;
       if (current > 5) {
-        saveProgress(fileUrl, passedFile?.name || fileUrl.split('/').pop(), meta?.poster || null, current, duration).catch(() => {});
+        saveProgress(fileUrl, passedFile?.name || fileUrl.split('/').pop(), meta?.poster || null, current, duration).catch(() => { });
       }
     };
     player.on('pause', onPause);
@@ -116,10 +126,12 @@ export default function Player() {
 
     return () => {
       clearInterval(interval);
-      player.off('pause', onPause);
-      player.off('ended', onPause);
-      player.dispose();
-      playerRef.current = null;
+      if (playerRef.current && !playerRef.current.isDisposed()) {
+        playerRef.current.off('pause', onPause);
+        playerRef.current.off('ended', onPause);
+        playerRef.current.dispose();
+        playerRef.current = null;
+      }
     };
   }, [fileUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -134,10 +146,10 @@ export default function Player() {
     }
     if (activeSub) {
       player.addRemoteTextTrack({
-        kind:    activeSub.kind,
-        label:   activeSub.label,
+        kind: activeSub.kind,
+        label: activeSub.label,
         language: activeSub.language,
-        src:     activeSub.src,
+        src: activeSub.src,
         default: true,
       }, false);
     }
@@ -154,10 +166,10 @@ export default function Player() {
     setShowResume(false);
   }, []);
 
-  const title    = meta?.title || (passedFile?.name || fileUrl.split('/').pop()).replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
+  const title = meta?.title || (passedFile?.name || fileUrl.split('/').pop()).replace(/\.[^.]+$/, '').replace(/[._]/g, ' ');
   const overview = meta?.overview;
-  const cast     = meta?.cast?.slice(0, 6) || [];
-  const genres   = meta?.genres || [];
+  const cast = meta?.cast?.slice(0, 6) || [];
+  const genres = meta?.genres || [];
 
   return (
     <div className="min-h-screen bg-zinc-950 pt-16">
@@ -182,6 +194,20 @@ export default function Player() {
 
           {/* Player wrapper */}
           <div className="relative rounded-xl overflow-hidden bg-black">
+            {codecWarning && (
+              <div className="bg-yellow-900/80 border border-yellow-600 text-yellow-200 text-sm px-4 py-3 flex items-start gap-3">
+                <svg className="w-5 h-5 flex-shrink-0 mt-0.5 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                </svg>
+                <div>
+                  <p className="font-semibold">Codec not supported in browser ({codecWarning})</p>
+                  <p className="text-yellow-300 text-xs mt-1">
+                    This file uses a codec your browser cannot decode. You will hear audio but see no video.
+                    Use VLC or another media player to watch this file.
+                  </p>
+                </div>
+              </div>
+            )}
             <div data-vjs-player>
               <video
                 ref={videoRef}
@@ -214,14 +240,33 @@ export default function Player() {
               activeSrc={activeSub?.src}
               onSelect={setActiveSub}
             />
+    <button
+  onClick={() => {
+    navigator.clipboard.writeText(fileUrl).then(() => {
+      alert('Video URL copied! Paste it into VLC: Media → Open Network Stream (Ctrl+N)');
+    });
+  }}
+  className={`flex items-center gap-2 text-xs transition-colors ${
+    codecWarning
+      ? 'bg-yellow-600 hover:bg-yellow-500 text-white px-3 py-1.5 rounded-lg font-medium'
+      : 'bg-zinc-700 hover:bg-zinc-600 text-white px-3 py-1.5 rounded-lg'
+  }`}
+>
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+  </svg>
+  Copy URL for VLC
+</button>
+
             <a
-              href={`vlc://${fileUrl}`}
+              href={fileUrl}
+              download
               className="flex items-center gap-2 text-zinc-400 hover:text-white text-xs transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
               </svg>
-              Open in VLC
+              Download
             </a>
           </div>
 
@@ -234,9 +279,9 @@ export default function Player() {
               <div>
                 <h1 className="text-white text-2xl font-bold">{title}</h1>
                 <div className="flex flex-wrap items-center gap-3 mt-2">
-                  {meta?.year    && <span className="text-zinc-400 text-sm">{meta.year}</span>}
+                  {meta?.year && <span className="text-zinc-400 text-sm">{meta.year}</span>}
                   {meta?.runtime && <span className="text-zinc-400 text-sm">{meta.runtime} min</span>}
-                  {meta?.rating  && (
+                  {meta?.rating && (
                     <span className="bg-zinc-800 text-yellow-400 text-xs font-bold px-2 py-0.5 rounded">
                       ★ {meta.rating}
                     </span>
@@ -292,7 +337,7 @@ export default function Player() {
           </div>
         )}
       </div>
-    </div>
+    </div >
   );
 }
 
@@ -306,7 +351,7 @@ function guessType(url) {
     mkv: 'video/x-matroska',
     avi: 'video/x-msvideo',
     mov: 'video/quicktime',
-    ts:  'video/mp2t',
+    ts: 'video/mp2t',
     m3u8: 'application/x-mpegURL',
   };
   return map[ext] || 'video/mp4';
@@ -318,4 +363,15 @@ function formatTime(secs) {
   const s = Math.floor(secs % 60);
   if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function detectCodecWarning(url) {
+  const name = decodeURIComponent(url).toLowerCase();
+  if (name.includes('x265') || name.includes('h.265') || name.includes('hevc') || name.includes('h265')) {
+    return 'x265/HEVC';
+  }
+  if (name.includes('10bit') || name.includes('10-bit')) {
+    return '10-bit';
+  }
+  return null;
 }

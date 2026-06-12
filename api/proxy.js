@@ -29,7 +29,7 @@ export default async function handler(req, res) {
         'Accept': 'text/html,application/xhtml+xml,*/*',
       },
       // 10-second timeout
-      signal: AbortSignal.timeout(10000),
+      signal: AbortSignal.timeout(30000),
     });
 
     if (!response.ok) {
@@ -41,6 +41,16 @@ export default async function handler(req, res) {
     const contentType = response.headers.get('content-type') || 'text/html';
     const text = await response.text();
 
+    const isSrt = url.toLowerCase().endsWith('.srt');
+    if (isSrt) {
+      // Convert SRT to WebVTT on the fly
+      const vtt = 'WEBVTT\n\n' + text
+        .replace(/\r\n/g, '\n')
+        .replace(/(\d+)\n(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$2.$3')
+        .replace(/ --> (\d{2}:\d{2}:\d{2}),(\d{3})/g, ' --> $1.$2');
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      return res.status(200).send(vtt);
+    }
     res.setHeader('Content-Type', 'text/plain; charset=utf-8');
     return res.status(200).send(text);
   } catch (err) {

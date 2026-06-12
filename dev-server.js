@@ -55,5 +55,5 @@ app.all('/api/tmdb',  adaptHandler(tmdbMod));
 
 const PORT = 3001;
 app.listen(PORT, () => {
-  console.log(`\n✅  OpenPlay API dev server running at http://localhost:${PORT}\n`);
+  console.log(`\n OpenPlay API dev server running at http://localhost:${PORT}\n`);
 });
