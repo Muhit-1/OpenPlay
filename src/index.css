@@ -1,1 +1,55 @@
+/* src/index.css */
 @import "tailwindcss";
+
+/* ── Hide scrollbars on horizontal scroll rows ── */
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Video.js theme overrides ── */
+.video-js {
+  font-family: inherit;
+}
+
+.video-js .vjs-big-play-button {
+  background-color: rgba(220, 38, 38, 0.85) !important;
+  border: none !important;
+  border-radius: 50% !important;
+  width: 72px !important;
+  height: 72px !important;
+  top: 50% !important;
+  left: 50% !important;
+  margin-top: -36px !important;
+  margin-left: -36px !important;
+}
+
+.video-js .vjs-big-play-button:hover {
+  background-color: rgb(220, 38, 38) !important;
+}
+
+.video-js .vjs-control-bar {
+  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent) !important;
+  height: 4rem !important;
+  padding: 0 8px !important;
+}
+
+.video-js .vjs-progress-control .vjs-play-progress {
+  background-color: #dc2626 !important;
+}
+
+.video-js .vjs-load-progress div,
+.video-js .vjs-load-progress {
+  background: rgba(255,255,255,0.2) !important;
+}
+
+.video-js .vjs-slider:focus {
+  box-shadow: none !important;
+}
+
+/* ── Tailwind v4 base resets ── */
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: #09090b; /* zinc-950 */
+  color: #fff;
+}
