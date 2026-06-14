@@ -1,16 +1,33 @@
 /* src/index.css */
 @import "tailwindcss";
 
+/* ── Theme CSS variables (accent color system) ── */
+:root {
+  --accent:        #dc2626;   /* red-600 default */
+  --accent-hover:  #b91c1c;   /* red-700 */
+  --accent-light:  #fca5a5;   /* red-300 */
+  --accent-dim:    rgba(220,38,38,0.15);
+  --card-width:    176px;     /* w-44 = 11rem = 176px */
+  --card-height:   256px;     /* h-64 */
+}
+
 /* ── Hide scrollbars on horizontal scroll rows ── */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+/* ── Accent utility classes driven by CSS vars ── */
+.bg-accent        { background-color: var(--accent) !important; }
+.bg-accent-hover:hover { background-color: var(--accent-hover) !important; }
+.text-accent      { color: var(--accent) !important; }
+.border-accent    { border-color: var(--accent) !important; }
+.ring-accent:focus { --tw-ring-color: var(--accent) !important; }
 
 /* ── Video.js theme overrides ── */
 .video-js {
   font-family: inherit;
 }
-
 .video-js .vjs-big-play-button {
+  background-color: var(--accent) !important;
   background-color: rgba(220, 38, 38, 0.85) !important;
   border: none !important;
   border-radius: 50% !important;
@@ -20,36 +37,105 @@
   left: 50% !important;
   margin-top: -36px !important;
   margin-left: -36px !important;
+  transition: transform 0.15s ease, background-color 0.15s ease !important;
 }
-
 .video-js .vjs-big-play-button:hover {
-  background-color: rgb(220, 38, 38) !important;
+  background-color: var(--accent) !important;
+  transform: scale(1.08) !important;
 }
-
 .video-js .vjs-control-bar {
-  background: linear-gradient(to top, rgba(0,0,0,0.85), transparent) !important;
+  background: linear-gradient(to top, rgba(0,0,0,0.9), transparent) !important;
   height: 4rem !important;
   padding: 0 8px !important;
 }
-
 .video-js .vjs-progress-control .vjs-play-progress {
-  background-color: #dc2626 !important;
+  background-color: var(--accent) !important;
 }
-
 .video-js .vjs-load-progress div,
 .video-js .vjs-load-progress {
   background: rgba(255,255,255,0.2) !important;
 }
+.video-js .vjs-slider:focus { box-shadow: none !important; }
 
-.video-js .vjs-slider:focus {
-  box-shadow: none !important;
+/* ── Native player custom controls ── */
+.player-controls {
+  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
 }
+
+.progress-bar-track {
+  background: rgba(255,255,255,0.2);
+  border-radius: 2px;
+  height: 4px;
+  transition: height 0.15s ease;
+  cursor: pointer;
+}
+.progress-bar-track:hover { height: 6px; }
+
+.progress-bar-fill {
+  background: var(--accent);
+  height: 100%;
+  border-radius: 2px;
+  pointer-events: none;
+  position: relative;
+}
+.progress-bar-fill::after {
+  content: '';
+  position: absolute;
+  right: -5px;
+  top: 50%;
+  transform: translateY(-50%) scale(0);
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--accent);
+  transition: transform 0.15s ease;
+}
+.progress-bar-track:hover .progress-bar-fill::after {
+  transform: translateY(-50%) scale(1);
+}
+
+/* ── Hover-preview thumbnail ── */
+.preview-thumb {
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+/* ── VideoCard sizing from CSS var ── */
+.video-card {
+  width: var(--card-width);
+}
+.video-card-poster {
+  height: var(--card-height);
+}
+
+/* ── Trending card not-available state ── */
+.card-unavailable {
+  filter: grayscale(0.4);
+  opacity: 0.75;
+}
+.card-unavailable::after {
+  content: 'Not on server';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: rgba(0,0,0,0.75);
+  color: #a1a1aa;
+  font-size: 10px;
+  text-align: center;
+  padding: 3px 0;
+  letter-spacing: 0.04em;
+}
+
+/* ── Smooth page transitions ── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-enter { animation: fadeSlideUp 0.3s ease forwards; }
 
 /* ── Tailwind v4 base resets ── */
 *, *::before, *::after { box-sizing: border-box; }
-
 body {
   margin: 0;
-  background-color: #09090b; /* zinc-950 */
+  background-color: #09090b;
   color: #fff;
 }
