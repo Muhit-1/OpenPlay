@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import Navbar      from './components/Navbar';
 import Home        from './pages/Home';
 import Browse      from './pages/Browse';
+import Catalog     from './pages/Catalog';
 import Channel     from './pages/Channel';
 import Player      from './pages/Player';
 import Search      from './pages/Search';
@@ -21,11 +22,11 @@ export default function App() {
         <Routes>
           <Route path="/"                    element={<Home />} />
           <Route path="/browse"              element={<Browse />} />
+          <Route path="/catalog"             element={<Catalog />} />
           <Route path="/channel/:id"         element={<Channel />} />
           <Route path="/watch/:encodedUrl"   element={<Player />} />
           <Route path="/search"              element={<Search />} />
           <Route path="/settings"            element={<Settings />} />
-          {/* Movie / Series detail page */}
           <Route path="/detail/:id"          element={<MovieDetail />} />
         </Routes>
       </div>

@@ -1,11 +1,10 @@
 // src/components/TmdbRow.jsx
-// A scrollable row of TMDB cards — used for Trending, Genre rows, etc.
-// Each card navigates to /movie/:id or /series/:id detail page.
+// Scrollable row of TMDB cards with a "View All" button → /catalog page
 
 import { useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-export default function TmdbRow({ title, badge, items = [], loading = false }) {
+export default function TmdbRow({ title, badge, items = [], loading = false, catalogKey }) {
   const scrollRef = useRef(null);
   const navigate  = useNavigate();
 
@@ -27,7 +26,20 @@ export default function TmdbRow({ title, badge, items = [], loading = false }) {
             </span>
           )}
         </div>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          {/* View All button */}
+          {catalogKey && (
+            <button
+              onClick={() => navigate(`/catalog?cat=${encodeURIComponent(catalogKey)}`)}
+              className="text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded-full transition-colors flex items-center gap-1"
+            >
+              View All
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+          )}
+          {/* Scroll arrows */}
           <button
             onClick={() => scroll(-1)}
             className="p-1.5 rounded-full bg-zinc-800 hover:bg-zinc-700 text-white transition-colors"
@@ -65,7 +77,6 @@ export default function TmdbRow({ title, badge, items = [], loading = false }) {
   );
 }
 
-// ── Single TMDB card ──────────────────────────────────────────────────────
 function TmdbCard({ item, navigate }) {
   const { id, title, name, year, rating, poster, type, serverStatus } = item;
   const displayTitle = title || name || '';
@@ -73,25 +84,15 @@ function TmdbCard({ item, navigate }) {
   const available    = serverStatus === 'found';
   const unavailable  = serverStatus === 'not-found';
 
-  const handleClick = () => {
-    navigate(`/detail/${id}?type=${mediaType}`);
-  };
-
   return (
     <button
-      onClick={handleClick}
+      onClick={() => navigate(`/detail/${id}?type=${mediaType}`)}
       className="group relative flex-shrink-0 video-card rounded-xl overflow-hidden bg-zinc-900 text-left transition-all duration-200 hover:scale-[1.03] hover:shadow-xl hover:shadow-black/50 hover:ring-2 hover:ring-[var(--accent)]"
       title={displayTitle}
     >
-      {/* Poster */}
       <div className="relative video-card-poster bg-zinc-800">
         {poster ? (
-          <img
-            src={poster}
-            alt={displayTitle}
-            className="w-full h-full object-cover"
-            loading="lazy"
-          />
+          <img src={poster} alt={displayTitle} className="w-full h-full object-cover" loading="lazy" />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
             <svg className="w-12 h-12 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -100,8 +101,6 @@ function TmdbCard({ item, navigate }) {
             </svg>
           </div>
         )}
-
-        {/* Hover overlay — always navigates to detail page */}
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
           <div className="flex flex-col items-center gap-1.5">
             <div className="w-11 h-11 rounded-full bg-[var(--accent)] flex items-center justify-center shadow-lg">
@@ -112,32 +111,20 @@ function TmdbCard({ item, navigate }) {
             <span className="text-white text-[10px] font-medium">More Info</span>
           </div>
         </div>
-
-        {/* Rating badge */}
         {rating && (
           <span className="absolute top-2 right-2 bg-black/80 backdrop-blur-sm text-yellow-400 text-[10px] font-bold px-1.5 py-0.5 rounded-md flex items-center gap-0.5">
             <svg className="w-2.5 h-2.5 fill-yellow-400" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
             {rating}
           </span>
         )}
-
-        {/* TV badge */}
         {mediaType === 'tv' && (
           <span className="absolute top-2 left-2 bg-black/70 backdrop-blur-sm text-zinc-300 text-[9px] font-semibold px-1.5 py-0.5 rounded uppercase tracking-wide">
             Series
           </span>
         )}
-
-        {/* Server availability dot */}
-        {available && (
-          <span className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-green-400 shadow-sm shadow-green-400/50" title="Available on server" />
-        )}
-        {unavailable && (
-          <span className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-zinc-600" title="Not on server" />
-        )}
+        {available && <span className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-green-400 shadow-sm shadow-green-400/50" title="Available on server" />}
+        {unavailable && <span className="absolute bottom-2 right-2 w-2 h-2 rounded-full bg-zinc-600" title="Not on server" />}
       </div>
-
-      {/* Info */}
       <div className="p-2.5">
         <p className="text-white text-xs font-medium truncate leading-tight">{displayTitle}</p>
         {year && <p className="text-zinc-500 text-[10px] mt-0.5">{year}</p>}
@@ -146,7 +133,6 @@ function TmdbCard({ item, navigate }) {
   );
 }
 
-// ── Skeleton card ─────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
     <div className="flex-shrink-0 video-card rounded-xl overflow-hidden bg-zinc-900">

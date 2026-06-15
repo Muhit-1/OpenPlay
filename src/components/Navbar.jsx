@@ -5,6 +5,7 @@ import { useState } from 'react';
 export default function Navbar() {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const handleSearch = (e) => {
     e.preventDefault();
@@ -27,16 +28,82 @@ export default function Navbar() {
         </Link>
 
         {/* Nav links */}
-        <div className="hidden md:flex items-center gap-6">
-          <Link to="/" className="text-zinc-300 hover:text-white text-sm font-medium transition-colors">Home</Link>
-          <Link to="/browse" className="text-zinc-300 hover:text-white text-sm font-medium transition-colors">Browse</Link>
+        <div className="hidden md:flex items-center gap-1">
+          <Link to="/"
+            className="text-zinc-300 hover:text-white text-sm font-medium transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
+            Home
+          </Link>
+
+          {/* Browse dropdown */}
+          <div className="relative group">
+            <button className="flex items-center gap-1 text-zinc-300 hover:text-white text-sm font-medium transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
+              Browse
+              <svg className="w-3.5 h-3.5 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown panel */}
+            <div className="absolute left-0 top-full mt-1 w-64 bg-zinc-900 border border-zinc-700/60 rounded-xl shadow-2xl shadow-black/60 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-150 z-50 p-2">
+              <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-semibold px-3 py-1.5">Trending</p>
+              <Link to="/catalog?cat=trending-movies" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">🎬</span> Trending Movies
+              </Link>
+              <Link to="/catalog?cat=trending-series" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">📺</span> Trending Series
+              </Link>
+
+              <div className="border-t border-zinc-800 my-1.5" />
+              <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-semibold px-3 py-1.5">Movies</p>
+              <Link to="/catalog?cat=action" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">💥</span> Action
+              </Link>
+              <Link to="/catalog?cat=top-animation" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">✨</span> Animation
+              </Link>
+              <Link to="/catalog?cat=horror" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">👻</span> Horror
+              </Link>
+              <Link to="/catalog?cat=comedy" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">😂</span> Comedy
+              </Link>
+              <Link to="/catalog?cat=scifi" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">🚀</span> Sci-Fi
+              </Link>
+
+              <div className="border-t border-zinc-800 my-1.5" />
+              <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-semibold px-3 py-1.5">TV Series</p>
+              <Link to="/catalog?cat=drama-tv" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">🎭</span> Drama
+              </Link>
+              <Link to="/catalog?cat=crime-tv" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">🔍</span> Crime
+              </Link>
+              <Link to="/catalog?cat=animation-tv" className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors">
+                <span className="text-base">🎨</span> Animation
+              </Link>
+
+              <div className="border-t border-zinc-800 my-1.5" />
+              <Link to="/catalog" className="flex items-center justify-between px-3 py-2 rounded-lg text-sm text-[var(--accent)] hover:bg-zinc-800 transition-colors font-medium">
+                View All Categories
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+
+          <Link to="/browse"
+            className="text-zinc-300 hover:text-white text-sm font-medium transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
+            My Server
+          </Link>
         </div>
 
         {/* Spacer */}
         <div className="flex-1" />
 
         {/* Search */}
-        <form onSubmit={handleSearch} className="relative">
+        <form onSubmit={handleSearch} className="relative hidden sm:block">
           <input
             type="text"
             value={query}
