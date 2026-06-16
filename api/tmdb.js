@@ -13,6 +13,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store');  
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const apiKey = process.env.TMDB_API_KEY;
@@ -24,7 +25,7 @@ export default async function handler(req, res) {
     showId, season,
     tmdbId,   
     genre,  
-    page = 1,  
+    page = '1',  
   } = req.query;
 
   // ── NEW: Detail by TMDB id ────────────────────────────────────────────
@@ -93,7 +94,7 @@ export default async function handler(req, res) {
   if (trending) {
     const mt = mediaType === 'all' ? 'all' : mediaType;
     try {
-      const url = `${TMDB_BASE}/trending/${mt}/${timeWindow}?api_key=${apiKey}&language=${lang}`;
+      const url = `${TMDB_BASE}/trending/${mt}/${timeWindow}?api_key=${apiKey}&language=${lang}&page=${page}`;
       const r   = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!r.ok) return res.status(r.status).json({ error: 'TMDB trending failed' });
       const d   = await r.json();

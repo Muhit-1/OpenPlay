@@ -60,7 +60,7 @@ async function fetchCategoryItems(cat, lang, page = 1) {
   const base = `/api/tmdb`;
   let url;
   if (cat.source === 'tmdb-trending') {
-    url = `${base}?trending=1&mediaType=${cat.mediaType}&timeWindow=${cat.timeWindow}&lang=${lang}`;
+url = `${base}?trending=1&mediaType=${cat.mediaType}&timeWindow=${cat.timeWindow}&lang=${lang}&page=${page}`;
   } else {
     url = `${base}?genre=${cat.genreId}&mediaType=${cat.mediaType}&lang=${lang}&page=${page}`;
   }
