@@ -3,47 +3,47 @@
 // Filters: category, genre, year, rating.
 // Each card links to TMDB detail page; shows server availability.
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 
 // ── Category definitions ──────────────────────────────────────────────────
 // Each category maps to a TMDB endpoint + optional ISP server URL
 const CATEGORIES = [
   // TMDB-backed categories
-  { key: 'trending-movies',  label: 'Trending Movies',     source: 'tmdb-trending', mediaType: 'movie', timeWindow: 'week' },
-  { key: 'trending-series',  label: 'Trending Series',     source: 'tmdb-trending', mediaType: 'tv',    timeWindow: 'week' },
-  { key: 'top-animation',    label: 'Top Animation',       source: 'tmdb-genre',    mediaType: 'movie', genreId: 16 },
-  { key: 'action',           label: 'Action Movies',       source: 'tmdb-genre',    mediaType: 'movie', genreId: 28 },
-  { key: 'comedy',           label: 'Comedy',              source: 'tmdb-genre',    mediaType: 'movie', genreId: 35 },
-  { key: 'horror',           label: 'Horror',              source: 'tmdb-genre',    mediaType: 'movie', genreId: 27 },
-  { key: 'romance',          label: 'Romance',             source: 'tmdb-genre',    mediaType: 'movie', genreId: 10749 },
-  { key: 'scifi',            label: 'Sci-Fi',              source: 'tmdb-genre',    mediaType: 'movie', genreId: 878 },
-  { key: 'drama',            label: 'Drama',               source: 'tmdb-genre',    mediaType: 'movie', genreId: 18 },
-  { key: 'thriller',         label: 'Thriller',            source: 'tmdb-genre',    mediaType: 'movie', genreId: 53 },
-  { key: 'documentary',      label: 'Documentary',         source: 'tmdb-genre',    mediaType: 'movie', genreId: 99 },
-  { key: 'crime',            label: 'Crime',               source: 'tmdb-genre',    mediaType: 'movie', genreId: 80 },
-  { key: 'fantasy',          label: 'Fantasy',             source: 'tmdb-genre',    mediaType: 'movie', genreId: 14 },
-  { key: 'action-tv',        label: 'Action & Adventure (TV)', source: 'tmdb-genre', mediaType: 'tv',  genreId: 10759 },
-  { key: 'scifi-tv',         label: 'Sci-Fi & Fantasy (TV)',   source: 'tmdb-genre', mediaType: 'tv',  genreId: 10765 },
-  { key: 'drama-tv',         label: 'Drama (TV)',          source: 'tmdb-genre',    mediaType: 'tv',   genreId: 18 },
-  { key: 'comedy-tv',        label: 'Comedy (TV)',         source: 'tmdb-genre',    mediaType: 'tv',   genreId: 35 },
-  { key: 'crime-tv',         label: 'Crime (TV)',          source: 'tmdb-genre',    mediaType: 'tv',   genreId: 80 },
-  { key: 'animation-tv',     label: 'Animation (TV)',      source: 'tmdb-genre',    mediaType: 'tv',   genreId: 16 },
-  { key: 'reality-tv',       label: 'Reality TV',          source: 'tmdb-genre',    mediaType: 'tv',   genreId: 10764 },
+  { key: 'trending-movies', label: 'Trending Movies', source: 'tmdb-trending', mediaType: 'movie', timeWindow: 'week' },
+  { key: 'trending-series', label: 'Trending Series', source: 'tmdb-trending', mediaType: 'tv', timeWindow: 'week' },
+  { key: 'top-animation', label: 'Top Animation', source: 'tmdb-genre', mediaType: 'movie', genreId: 16 },
+  { key: 'action', label: 'Action Movies', source: 'tmdb-genre', mediaType: 'movie', genreId: 28 },
+  { key: 'comedy', label: 'Comedy', source: 'tmdb-genre', mediaType: 'movie', genreId: 35 },
+  { key: 'horror', label: 'Horror', source: 'tmdb-genre', mediaType: 'movie', genreId: 27 },
+  { key: 'romance', label: 'Romance', source: 'tmdb-genre', mediaType: 'movie', genreId: 10749 },
+  { key: 'scifi', label: 'Sci-Fi', source: 'tmdb-genre', mediaType: 'movie', genreId: 878 },
+  { key: 'drama', label: 'Drama', source: 'tmdb-genre', mediaType: 'movie', genreId: 18 },
+  { key: 'thriller', label: 'Thriller', source: 'tmdb-genre', mediaType: 'movie', genreId: 53 },
+  { key: 'documentary', label: 'Documentary', source: 'tmdb-genre', mediaType: 'movie', genreId: 99 },
+  { key: 'crime', label: 'Crime', source: 'tmdb-genre', mediaType: 'movie', genreId: 80 },
+  { key: 'fantasy', label: 'Fantasy', source: 'tmdb-genre', mediaType: 'movie', genreId: 14 },
+  { key: 'action-tv', label: 'Action & Adventure (TV)', source: 'tmdb-genre', mediaType: 'tv', genreId: 10759 },
+  { key: 'scifi-tv', label: 'Sci-Fi & Fantasy (TV)', source: 'tmdb-genre', mediaType: 'tv', genreId: 10765 },
+  { key: 'drama-tv', label: 'Drama (TV)', source: 'tmdb-genre', mediaType: 'tv', genreId: 18 },
+  { key: 'comedy-tv', label: 'Comedy (TV)', source: 'tmdb-genre', mediaType: 'tv', genreId: 35 },
+  { key: 'crime-tv', label: 'Crime (TV)', source: 'tmdb-genre', mediaType: 'tv', genreId: 80 },
+  { key: 'animation-tv', label: 'Animation (TV)', source: 'tmdb-genre', mediaType: 'tv', genreId: 16 },
+  { key: 'reality-tv', label: 'Reality TV', source: 'tmdb-genre', mediaType: 'tv', genreId: 10764 },
 ];
 
 const CATEGORY_GROUPS = [
-  { label: 'Trending',    keys: ['trending-movies', 'trending-series'] },
-  { label: 'Movies',      keys: ['top-animation','action','comedy','horror','romance','scifi','drama','thriller','documentary','crime','fantasy'] },
-  { label: 'TV Series',   keys: ['action-tv','scifi-tv','drama-tv','comedy-tv','crime-tv','animation-tv','reality-tv'] },
+  { label: 'Trending', keys: ['trending-movies', 'trending-series'] },
+  { label: 'Movies', keys: ['top-animation', 'action', 'comedy', 'horror', 'romance', 'scifi', 'drama', 'thriller', 'documentary', 'crime', 'fantasy'] },
+  { label: 'TV Series', keys: ['action-tv', 'scifi-tv', 'drama-tv', 'comedy-tv', 'crime-tv', 'animation-tv', 'reality-tv'] },
 ];
 
 const RATING_OPTIONS = [
   { label: 'Any Rating', value: 0 },
-  { label: '7+ ★',       value: 7 },
-  { label: '7.5+ ★',     value: 7.5 },
-  { label: '8+ ★',       value: 8 },
-  { label: '8.5+ ★',     value: 8.5 },
+  { label: '7+ ★', value: 7 },
+  { label: '7.5+ ★', value: 7.5 },
+  { label: '8+ ★', value: 8 },
+  { label: '8.5+ ★', value: 8.5 },
 ];
 
 const CURRENT_YEAR = new Date().getFullYear();
@@ -64,16 +64,16 @@ async function fetchCategoryItems(cat, lang, page = 1) {
   } else {
     url = `${base}?genre=${cat.genreId}&mediaType=${cat.mediaType}&lang=${lang}&page=${page}`;
   }
-  const res  = await fetch(url);
+  const res = await fetch(url);
   const data = await res.json();
-  const arr  = Array.isArray(data) ? data : [];
+  const arr = Array.isArray(data) ? data : [];
   return arr.map(item => ({
-    id:       item.id,
-    title:    item.title || item.name || '',
-    year:     (item.year || item.release_date || item.first_air_date || '').slice(0, 4),
-    rating:   item.rating ?? (item.vote_average ? Math.round(item.vote_average * 10) / 10 : null),
-    poster:   item.poster || (item.poster_path ? `https://image.tmdb.org/t/p/w342${item.poster_path}` : null),
-    type:     item.type || cat.mediaType,
+    id: item.id,
+    title: item.title || item.name || '',
+    year: (item.year || item.release_date || item.first_air_date || '').slice(0, 4),
+    rating: item.rating ?? (item.vote_average ? Math.round(item.vote_average * 10) / 10 : null),
+    poster: item.poster || (item.poster_path ? `https://image.tmdb.org/t/p/w342${item.poster_path}` : null),
+    type: item.type || cat.mediaType,
     overview: item.overview || '',
   }));
 }
@@ -86,18 +86,18 @@ export default function Catalog() {
   const initCat = searchParams.get('cat') || 'trending-movies';
 
   const [selectedCat, setSelectedCat] = useState(initCat);
-  const [minRating,   setMinRating]   = useState(0);
-  const [filterYear,  setFilterYear]  = useState('');
-  const [searchQ,     setSearchQ]     = useState('');
+  const [minRating, setMinRating] = useState(0);
+  const [filterYear, setFilterYear] = useState('');
+  const [searchQ, setSearchQ] = useState('');
 
-  const [items,   setItems]   = useState([]);
+  const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [page,    setPage]    = useState(1);
+  const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
-  const loaderRef = useRef(null);
+
 
   const lang = localStorage.getItem('tmdb_lang') || 'en-US';
-  const cat  = CATEGORIES.find(c => c.key === selectedCat) || CATEGORIES[0];
+  const cat = CATEGORIES.find(c => c.key === selectedCat) || CATEGORIES[0];
 
   // Load items when category / page changes
   useEffect(() => {
@@ -107,8 +107,8 @@ export default function Catalog() {
     fetchCategoryItems(cat, lang, page)
       .then(newItems => {
         if (cancelled) return;
-        setItems(prev => page === 1 ? newItems : [...prev, ...newItems]);
-        setHasMore(newItems.length >= 18);
+        setItems(newItems);
+        setHasMore(newItems.length > 0);
         setLoading(false);
       })
       .catch(() => { if (!cancelled) setLoading(false); });
@@ -124,17 +124,7 @@ export default function Catalog() {
     setSearchParams({ cat: key });
   };
 
-  // Infinite scroll observer
-  useEffect(() => {
-    if (!loaderRef.current) return;
-    const obs = new IntersectionObserver(entries => {
-      if (entries[0].isIntersecting && !loading && hasMore) {
-        setPage(p => p + 1);
-      }
-    }, { threshold: 0.1 });
-    obs.observe(loaderRef.current);
-    return () => obs.disconnect();
-  }, [loading, hasMore]);
+
 
   // Filter locally
   const visible = items.filter(item => {
@@ -176,11 +166,10 @@ export default function Catalog() {
                         <button
                           key={key}
                           onClick={() => changeCategory(key)}
-                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                            selectedCat === key
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${selectedCat === key
                               ? 'bg-[var(--accent)] text-white font-medium'
                               : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
-                          }`}
+                            }`}
                         >
                           {c.label}
                         </button>
@@ -228,7 +217,7 @@ export default function Catalog() {
                   <button onClick={() => setSearchQ('')}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white">
                     <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
                 )}
@@ -298,14 +287,22 @@ export default function Catalog() {
                   ))}
                 </div>
 
-                {/* Infinite scroll loader */}
-                <div ref={loaderRef} className="h-16 flex items-center justify-center mt-4">
-                  {loading && (
-                    <div className="w-5 h-5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-                  )}
-                  {!loading && !hasMore && items.length > 0 && (
-                    <p className="text-zinc-600 text-xs">All titles loaded</p>
-                  )}
+                <div className="flex items-center justify-center gap-4 mt-8">
+                  <button
+                    onClick={() => { setPage(p => p - 1); setItems([]); window.scrollTo(0, 0); }}
+                    disabled={page === 1 || loading}
+                    className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm disabled:opacity-30 transition-colors"
+                  >
+                    ← Prev
+                  </button>
+                  <span className="text-zinc-500 text-sm">Page {page}</span>
+                  <button
+                    onClick={() => { setPage(p => p + 1); setItems([]); window.scrollTo(0, 0); }}
+                    disabled={!hasMore || loading}
+                    className="px-5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white text-sm disabled:opacity-30 transition-colors"
+                  >
+                    Next →
+                  </button>
                 </div>
               </>
             )}
@@ -335,7 +332,7 @@ function CatalogCard({ item, navigate }) {
           <div className="w-full h-full flex items-center justify-center">
             <svg className="w-10 h-10 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-                d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
+                d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
             </svg>
           </div>
         )}
@@ -343,14 +340,14 @@ function CatalogCard({ item, navigate }) {
         <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
           <div className="w-10 h-10 rounded-full bg-[var(--accent)] flex items-center justify-center shadow-lg">
             <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
           </div>
         </div>
         {/* Rating badge */}
         {rating && (
           <span className="absolute top-1.5 right-1.5 bg-black/80 text-yellow-400 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5">
-            <svg className="w-2 h-2 fill-yellow-400" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+            <svg className="w-2 h-2 fill-yellow-400" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" /></svg>
             {rating}
           </span>
         )}

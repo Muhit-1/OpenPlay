@@ -22,8 +22,9 @@ export default async function handler(req, res) {
     title, year, type = 'movie', lang = 'en-US',
     trending, mediaType = 'all', timeWindow = 'week',
     showId, season,
-    tmdbId,   // NEW: direct detail lookup
-    genre,    // NEW: genre row fetch
+    tmdbId,   
+    genre,  
+    page = 1,  
   } = req.query;
 
   // ── NEW: Detail by TMDB id ────────────────────────────────────────────
@@ -70,7 +71,7 @@ export default async function handler(req, res) {
   if (genre) {
     const mt = mediaType === 'tv' ? 'tv' : 'movie';
     try {
-      const url = `${TMDB_BASE}/discover/${mt}?api_key=${apiKey}&with_genres=${genre}&language=${lang}&sort_by=popularity.desc&page=1`;
+      const url = `${TMDB_BASE}/discover/${mt}?api_key=${apiKey}&with_genres=${genre}&language=${lang}&sort_by=popularity.desc&page=${page}`;
       const r   = await fetch(url, { signal: AbortSignal.timeout(8000) });
       if (!r.ok) return res.status(r.status).json({ error: 'TMDB genre fetch failed' });
       const d   = await r.json();
