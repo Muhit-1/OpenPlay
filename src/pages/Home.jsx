@@ -1,303 +1,328 @@
 // src/pages/Home.jsx
-// Home page — TMDB rows all have "View All" → /catalog
+//
+// The hero is the server itself — you are browsing a machine on your ISP's
+// network, and whether it is answering is the first thing worth knowing.
+//
+// Below that, every row is media. The previous version rendered the server's
+// own directory buckets as cards, so the page offered you "TV Series ♦ M — R"
+// as though it were something to watch. Rows now reach through the buckets and
+// show titles; the buckets live in the Movies / Series / Animation pages as a
+// tab strip, where an index belongs.
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CategoryRow from '../components/CategoryRow';
-import TmdbRow    from '../components/TmdbRow';
-import { fetchDirectory, fetchTrending } from '../lib/tmdb';
+import { HardDrive, ArrowRight, Settings as SettingsIcon, Play } from 'lucide-react';
+import Row from '../components/Row';
+import { Spinner, Notice } from '../components/ui';
+import { fetchDirectory, fetchTrending, fetchByGenre } from '../lib/tmdb';
 import { getContinueWatching } from '../lib/firebase';
+import { librariesFor, libraryIndex, libraryTitles } from '../lib/server';
 
 const GENRE_ROWS = [
-  { id: 28,    label: 'Action',              type: 'movie', catKey: 'action'      },
-  { id: 35,    label: 'Comedy',              type: 'movie', catKey: 'comedy'      },
-  { id: 27,    label: 'Horror',              type: 'movie', catKey: 'horror'      },
-  { id: 10749, label: 'Romance',             type: 'movie', catKey: 'romance'     },
-  { id: 878,   label: 'Sci-Fi',              type: 'movie', catKey: 'scifi'       },
-  { id: 18,    label: 'Drama',               type: 'movie', catKey: 'drama'       },
-  { id: 10759, label: 'Action & Adventure',  type: 'tv',    catKey: 'action-tv'   },
-  { id: 10765, label: 'Sci-Fi & Fantasy',    type: 'tv',    catKey: 'scifi-tv'    },
+  { id: 28,  label: 'Action',          key: 'action' },
+  { id: 35,  label: 'Comedy',          key: 'comedy' },
+  { id: 27,  label: 'Horror',          key: 'horror' },
+  { id: 878, label: 'Science Fiction', key: 'scifi' },
 ];
 
 export default function Home() {
   const navigate = useNavigate();
-  const ispUrl   = localStorage.getItem('isp_url');
+  const ispUrl = localStorage.getItem('isp_url');
 
-  const [rootFolders,  setRootFolders]  = useState([]);
-  const [rootFiles,    setRootFiles]    = useState([]);
+  const [server, setServer] = useState({ state: 'loading', folders: [], files: [], ms: null, error: null });
   const [continueList, setContinueList] = useState([]);
-  const [ispLoading,   setIspLoading]   = useState(true);
-  const [ispError,     setIspError]     = useState(null);
 
   const [trendingMovies, setTrendingMovies] = useState([]);
   const [trendingSeries, setTrendingSeries] = useState([]);
-  const [topAnimation,   setTopAnimation]   = useState([]);
-  const [genreRows,      setGenreRows]      = useState({});
-  const [tmdbLoading,    setTmdbLoading]    = useState(true);
+  const [genreRows, setGenreRows] = useState([]);
+  const [tmdbLoading, setTmdbLoading] = useState(true);
 
-  // ISP directory
+  // Newest slice of each library, resolved to titles.
+  const shelves = useMemo(
+    () => [...librariesFor('movies'), ...librariesFor('series'), ...librariesFor('animation')]
+      .filter(lib => !lib.secondary && lib.online !== false)
+      .slice(0, 6),
+    []
+  );
+
   useEffect(() => {
-    if (!ispUrl) { setIspLoading(false); return; }
-    const extraUrls = JSON.parse(localStorage.getItem('extra_urls') || '[]');
-    const allUrls   = [ispUrl, ...extraUrls];
-    Promise.all(allUrls.map(url => fetchDirectory(url).catch(() => ({ folders: [], files: [] }))))
-      .then(results => {
-        setRootFolders(results.flatMap(r => r.folders || []));
-        setRootFiles(results.flatMap(r => r.files   || []));
-      })
-      .catch(err => setIspError(err.message))
-      .finally(() => setIspLoading(false));
-    getContinueWatching(10).then(setContinueList).catch(() => {});
+    if (!ispUrl) return;
+    let live = true;
+
+    const started = performance.now();
+    const extra = safeParse(localStorage.getItem('extra_urls'), []);
+
+    Promise.all([ispUrl, ...extra].map(url => fetchDirectory(url))).then(results => {
+      if (!live) return;
+      const ms = Math.round(performance.now() - started);
+      setServer({
+        state: results.some(r => (r.folders?.length || r.files?.length)) ? 'online' : 'offline',
+        folders: results.flatMap(r => r.folders || []),
+        files: results.flatMap(r => r.files || []),
+        ms,
+        error: results.map(r => r.error).filter(Boolean)[0] || null,
+      });
+    });
+
+    getContinueWatching(12).then(list => live && setContinueList(list)).catch(() => {});
+    return () => { live = false; };
   }, [ispUrl]);
 
-  // TMDB rows
   useEffect(() => {
-    const lang = localStorage.getItem('tmdb_lang') || 'en-US';
-    async function loadTmdb() {
-      setTmdbLoading(true);
-      try {
-        const [movies, series, anim] = await Promise.all([
-          fetchTrending('movie', 'week'),
-          fetchTrending('tv',    'week'),
-          fetchGenreItems(16, 'movie', lang),
-        ]);
-        setTrendingMovies(normalise(movies));
-        setTrendingSeries(normalise(series));
-        setTopAnimation(normalise(anim));
+    let live = true;
 
-        const genreResults = await Promise.allSettled(
-          GENRE_ROWS.slice(0, 4).map(g =>
-            fetchGenreItems(g.id, g.type, lang).then(items => ({
-              label: g.label, catKey: g.catKey, items: normalise(items),
-            }))
-          )
-        );
-        const built = {};
-        genreResults.forEach(r => {
-          if (r.status === 'fulfilled' && r.value.items.length > 0) {
-            built[r.value.label] = { items: r.value.items, catKey: r.value.catKey };
-          }
-        });
-        setGenreRows(built);
-      } catch { /* silent */ } finally {
-        setTmdbLoading(false);
-      }
-    }
-    loadTmdb();
+    (async () => {
+      const [movies, series] = await Promise.all([
+        fetchTrending('movie', 'week'),
+        fetchTrending('tv', 'week'),
+      ]);
+      if (!live) return;
+      setTrendingMovies(movies);
+      setTrendingSeries(series);
+      setTmdbLoading(false);
+
+      const rows = await Promise.all(
+        GENRE_ROWS.map(async g => ({ ...g, items: await fetchByGenre(g.id, 'movie') }))
+      );
+      if (live) setGenreRows(rows.filter(r => r.items.length));
+    })();
+
+    return () => { live = false; };
   }, []);
 
-  if (!ispUrl) return <SetupScreen navigate={navigate} />;
+  if (!ispUrl) return <FirstRun navigate={navigate} />;
 
   return (
-    <div className="min-h-screen bg-zinc-950 pt-20 pb-12 page-enter">
-
-      <HeroBanner ispUrl={ispUrl} rootFolders={rootFolders} rootFiles={rootFiles} ispLoading={ispLoading} />
+    <div className="page-enter py-7">
+      <ServerHeader server={server} url={ispUrl} navigate={navigate} />
 
       {continueList.length > 0 && (
-        <CategoryRow
-          title="Continue Watching"
-          files={continueList.map(item => ({
-            name: item.title, url: item.fileUrl, type: 'video',
-          }))}
+        <Row
+          eyebrow="Where you left off"
+          title="Continue watching"
+          files={continueList.map(item => ({ name: item.title, url: item.fileUrl, type: 'video' }))}
         />
       )}
 
-      <TmdbRow
-        title="Trending Movies"
-        badge="TMDB"
-        items={trendingMovies}
-        loading={tmdbLoading}
-        catalogKey="trending-movies"
-      />
-
-      <TmdbRow
-        title="Trending Series"
-        badge="TMDB"
-        items={trendingSeries}
-        loading={tmdbLoading}
-        catalogKey="trending-series"
-      />
-
-      <TmdbRow
-        title="Top Animation"
-        badge="TMDB"
-        items={topAnimation}
-        loading={tmdbLoading}
-        catalogKey="top-animation"
-      />
-
-      {/* ISP server rows */}
-      {ispError ? (
-        <div className="px-6 mb-10">
-          <div className="bg-red-900/20 border border-red-800/40 text-red-300 rounded-xl px-5 py-4 text-sm flex items-center gap-3">
-            <svg className="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
-            </svg>
-            Could not reach server — {ispError}
-          </div>
+      {server.state === 'offline' && server.error && (
+        <div className="px-5 sm:px-7 mb-9">
+          <Notice tone="error" title="Could not read the server">
+            {server.error}. Check the address in Settings, and that you are on your ISP's network.
+          </Notice>
         </div>
-      ) : ispLoading ? (
-        <IspSkeletonRows />
-      ) : (
-        <>
-          {rootFiles.length > 0 && <CategoryRow title="Files at Root" files={rootFiles} />}
-          {rootFolders.map(folder => <FolderRow key={folder.url} folder={folder} />)}
-        </>
       )}
 
-      {/* Genre rows */}
-      {Object.entries(genreRows).map(([label, { items, catKey }]) => (
-        <TmdbRow
-          key={label}
-          title={label}
-          badge="TMDB"
-          items={items}
-          catalogKey={catKey}
+      {server.state === 'loading' ? (
+        <div className="px-5 sm:px-7 mb-9"><Spinner label="Reading directory" /></div>
+      ) : (
+        shelves.map((lib, i) => (
+          <LibraryShelf key={lib.key} library={lib} navigate={navigate} eager={i < 2} />
+        ))
+      )}
+
+      <Row
+        eyebrow="TMDB"
+        title="Trending films this week"
+        items={trendingMovies}
+        loading={tmdbLoading}
+      />
+
+      <Row
+        eyebrow="TMDB"
+        title="Trending series this week"
+        items={trendingSeries}
+        loading={tmdbLoading}
+      />
+
+      {genreRows.map(row => (
+        <Row
+          key={row.key}
+          eyebrow="TMDB"
+          title={row.label}
+          items={row.items}
+          moreHref={`/channel/${encodeURIComponent(row.label)}?type=genre`}
         />
       ))}
     </div>
   );
 }
 
-function HeroBanner({ ispUrl, rootFolders, rootFiles, ispLoading }) {
-  const navigate = useNavigate();
-  const cleanUrl = ispUrl?.replace(/https?:\/\//, '') || '';
+/* ── Server instrument panel ─────────────────────────────────────────────── */
+
+function ServerHeader({ server, url, navigate }) {
+  const host = url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const videoCount = server.files.filter(f => f.type === 'video').length;
+
+  const state = {
+    loading: { color: 'var(--text-dim)', label: 'Connecting' },
+    online:  { color: 'var(--ok)',       label: 'Online' },
+    offline: { color: 'var(--error)',    label: 'Unreachable' },
+  }[server.state];
 
   return (
-    <div className="relative h-44 md:h-56 mb-10 mx-6 rounded-2xl overflow-hidden bg-zinc-900 flex items-end">
-      <div className="absolute inset-0 bg-gradient-to-r from-[var(--accent-dim)] via-transparent to-transparent opacity-70" />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-      <div className="absolute inset-0 opacity-5" style={{
-        backgroundImage: 'repeating-linear-gradient(0deg,#fff 0,#fff 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,#fff 0,#fff 1px,transparent 1px,transparent 40px)',
-      }} />
-      <div className="relative px-8 pb-7 flex items-end justify-between w-full">
-        <div>
-          <p className="text-[var(--accent)] text-xs font-semibold uppercase tracking-widest mb-1">Your Server</p>
-          <h1 className="text-white text-2xl font-bold truncate max-w-lg">{cleanUrl}</h1>
-          {!ispLoading && (
-            <p className="text-zinc-400 text-sm mt-1">
-              {rootFolders.length} categories · {rootFiles.length} files at root
-            </p>
-          )}
-          {ispLoading && (
-            <p className="text-zinc-500 text-sm mt-1 flex items-center gap-2">
-              <span className="w-3 h-3 border border-zinc-400 border-t-transparent rounded-full animate-spin inline-block" />
-              Loading directory…
-            </p>
-          )}
-        </div>
-        <div className="hidden md:flex flex-col items-center gap-2">
-          <div className="w-14 h-14 rounded-full bg-[var(--accent)]/20 border border-[var(--accent)]/30 items-center justify-center flex">
-            <svg className="w-6 h-6 text-[var(--accent)] ml-1" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M8 5v14l11-7z"/>
-            </svg>
+    <header className="px-5 sm:px-7 mb-9">
+      <div className="panel px-5 sm:px-6 py-5 flex flex-wrap items-center gap-x-8 gap-y-4">
+        {/* min-width keeps the address readable; below it the block wraps */}
+        <div className="min-w-[220px] flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className={`chip-dot ${server.state === 'loading' ? 'pulse' : ''}`}
+              style={{
+                color: state.color,
+                boxShadow: server.state === 'online' ? `0 0 8px ${state.color}` : 'none',
+              }}
+              aria-hidden="true"
+            />
+            <span className="eyebrow" style={{ color: state.color }}>{state.label}</span>
           </div>
+          <h1 className="mono text-[17px] sm:text-lg truncate">{host}</h1>
+        </div>
+
+        <dl className="flex items-center gap-7">
+          <Stat label="Folders" value={server.state === 'loading' ? '—' : server.folders.length} />
+          <Stat label="Files" value={server.state === 'loading' ? '—' : videoCount} />
+          {/* A repeat visit is served from the directory cache, which is not a
+              network measurement — say so rather than reporting a bogus 0 ms. */}
+          <Stat
+            label="Latency"
+            value={server.ms == null ? '—' : server.ms < 2 ? 'cached' : `${server.ms} ms`}
+          />
+        </dl>
+
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => navigate('/catalog')}
-            className="text-xs text-zinc-300 hover:text-white bg-zinc-800/80 hover:bg-zinc-700 px-3 py-1.5 rounded-full transition-colors border border-zinc-700"
+            onClick={() => navigate('/movies')}
+            className="btn-accent flex items-center gap-2 px-4 h-10 rounded-[10px] text-[15px]"
           >
-            Browse All →
+            <Play size={14} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            Browse library
+          </button>
+          <button
+            onClick={() => navigate('/browse')}
+            className="control flex items-center gap-1.5 px-3.5 h-10 text-[15px]"
+            style={{ color: 'var(--text-soft)' }}
+          >
+            <HardDrive size={14} aria-hidden="true" />
+            Files
           </button>
         </div>
       </div>
-    </div>
+    </header>
   );
 }
 
-function IspSkeletonRows() {
+function Stat({ label, value }) {
   return (
-    <div className="mb-10 px-6">
-      <div className="h-6 w-40 bg-zinc-800 rounded animate-pulse mb-4" />
-      <div className="flex gap-4">
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className="flex-shrink-0 video-card rounded-xl overflow-hidden bg-zinc-900">
-            <div className="video-card-poster bg-zinc-800 animate-pulse" />
-            <div className="p-2.5 space-y-1.5">
-              <div className="h-3 bg-zinc-800 rounded animate-pulse" />
-              <div className="h-2.5 w-1/2 bg-zinc-800 rounded animate-pulse" />
-            </div>
-          </div>
-        ))}
-      </div>
+    <div>
+      <dt className="eyebrow mb-1">{label}</dt>
+      <dd className="mono text-[15px] tabular-nums" style={{ color: 'var(--text-soft)' }}>{value}</dd>
     </div>
   );
 }
 
-function FolderRow({ folder }) {
-  const navigate = useNavigate();
-  const [data, setData]       = useState(null);
-  const [loading, setLoading] = useState(false);
+/* ── One row per library, showing its newest titles ──────────────────────── */
+
+function LibraryShelf({ library, navigate, eager = false }) {
+  const ref = useRef(null);
+  const [seen, setSeen] = useState(false);
+  const [titles, setTitles] = useState(null);
+
+  // A shelf costs two directory reads, so the ones further down wait until they
+  // are scrolled near. The first few load immediately: they are above the fold,
+  // and an observer that never fires (background tab, embedded webview) would
+  // otherwise leave the page permanently empty.
+  const visible = eager || seen;
 
   useEffect(() => {
-    setLoading(true);
-    fetchDirectory(folder.url)
-      .then(d => setData(d))
-      .catch(() => setData({ folders: [], files: [] }))
-      .finally(() => setLoading(false));
-  }, [folder.url]);
-
-  if (loading) {
-    return (
-      <div className="mb-10 px-6">
-        <div className="text-zinc-300 text-xl font-semibold mb-3">{folder.name}</div>
-        <div className="flex gap-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="flex-shrink-0 video-card video-card-poster rounded-xl bg-zinc-800 animate-pulse" />
-          ))}
-        </div>
-      </div>
+    const el = ref.current;
+    if (!el || visible) return;
+    const observer = new IntersectionObserver(
+      entries => { if (entries[0].isIntersecting) setSeen(true); },
+      { rootMargin: '500px' }
     );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    let live = true;
+
+    (async () => {
+      const index = await libraryIndex(library);
+      if (!live) return;
+
+      // sections are newest-first, so the head is the current year / first letter
+      const section = index.sections[0];
+      if (!section) { setTitles([]); return; }
+
+      const { titles: found } = await libraryTitles(section.url);
+      if (live) setTitles(found.slice(0, 24));
+    })();
+
+    return () => { live = false; };
+  }, [visible, library]);
+
+  const section = library.category === 'series' ? 'series'
+    : library.category === 'animation' ? 'animation' : 'movies';
+
+  if (!visible) {
+    return <div ref={ref} style={{ height: 'calc(var(--card-height) + 96px)' }} aria-hidden="true" />;
   }
-  if (!data) return null;
+
+  if (titles === null) {
+    return <div ref={ref}><Row eyebrow="On your server" title={library.label} loading /></div>;
+  }
+
+  if (titles.length === 0) return <div ref={ref} />;
 
   return (
-    <CategoryRow
-      title={folder.name}
-      files={data.files}
-      folders={data.folders}
-      onFolderClick={(sub) => navigate(`/browse?url=${encodeURIComponent(sub.url)}`)}
-    />
-  );
-}
-
-function SetupScreen({ navigate }) {
-  return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-center px-6">
-      <div className="w-16 h-16 bg-[var(--accent)] rounded-full flex items-center justify-center mb-6 shadow-[0_0_40px_var(--accent-dim)]">
-        <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M8 5v14l11-7z" />
-        </svg>
-      </div>
-      <h1 className="text-white text-3xl font-bold mb-3">Welcome to OpenPlay</h1>
-      <p className="text-zinc-400 text-lg mb-8 max-w-md">
-        Enter your ISP's open directory server URL to start streaming — no downloads, no logins.
-      </p>
-      <button
-        onClick={() => navigate('/settings')}
-        className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold px-8 py-3 rounded-full transition-colors"
-      >
-        Set up your server →
-      </button>
+    <div ref={ref}>
+      <Row
+        eyebrow="On your server"
+        title={library.label}
+        files={titles}
+        action={
+          <button
+            onClick={() => navigate(`/${section}?lib=${encodeURIComponent(library.key)}`)}
+            className="control flex items-center gap-1 px-2.5 h-8 text-[13px]"
+            style={{ color: 'var(--text-soft)' }}
+          >
+            All
+            <ArrowRight size={12} aria-hidden="true" />
+          </button>
+        }
+      />
     </div>
   );
 }
 
-function normalise(items = []) {
-  return items.map(item => ({
-    id:     item.id,
-    title:  item.title || item.name,
-    year:   (item.year || item.release_date || item.first_air_date || '').slice(0, 4),
-    rating: item.rating || (item.vote_average ? Math.round(item.vote_average * 10) / 10 : null),
-    poster: item.poster || (item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : null),
-    type:   item.type   || item.media_type || 'movie',
-    serverStatus: null,
-  }));
+/* ── First run ───────────────────────────────────────────────────────────── */
+
+function FirstRun({ navigate }) {
+  return (
+    <div className="page-enter min-h-[70vh] flex items-center justify-center px-6">
+      <div className="max-w-md text-center">
+        <img src="/logo.png" alt="" width={72} height={72} className="mx-auto mb-6" />
+
+        <h1 className="font-display text-3xl mb-3">Connect your server</h1>
+        <p className="text-[15px] leading-relaxed mb-8" style={{ color: 'var(--text-soft)' }}>
+          Give OpenPlay your ISP's portal address and it will find every library on it —
+          across all of their servers — and turn them into a browsable catalogue.
+        </p>
+
+        <button
+          onClick={() => navigate('/settings')}
+          className="btn-accent inline-flex items-center gap-2 px-5 h-11 rounded-[10px] text-[15px]"
+        >
+          <SettingsIcon size={15} aria-hidden="true" />
+          Open settings
+        </button>
+      </div>
+    </div>
+  );
 }
 
-async function fetchGenreItems(genreId, mediaType = 'movie', lang = 'en-US') {
-  try {
-    const res  = await fetch(`/api/tmdb?genre=${genreId}&mediaType=${mediaType}&lang=${lang}`);
-    const data = await res.json();
-    return Array.isArray(data) ? data : [];
-  } catch { return []; }
+function safeParse(raw, fallback) {
+  try { return JSON.parse(raw || '') ?? fallback; } catch { return fallback; }
 }

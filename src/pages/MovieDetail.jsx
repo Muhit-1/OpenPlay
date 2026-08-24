@@ -1,442 +1,473 @@
 // src/pages/MovieDetail.jsx
-// Full info page for a TMDB movie or series.
-// Searches DhakaFlix ISP server and always shows "Watch Now" (never "Browse").
-// If a folder is found, it auto-resolves to the first video file inside it.
+//
+// A TMDB title, plus the honest answer to the only question that matters here:
+// is it on your server, and will it play?
+//
+// The lookup itself lives in lib/server.js, which discovers each library's
+// folder layout instead of assuming one. The old hardcoded `(YYYY)/` pattern
+// missed every 1080p release on the server.
 
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft, Play, Download, Copy, Check, FolderOpen, Loader2, SearchX,
+  Bookmark, BookmarkCheck, Building2,
+} from 'lucide-react';
+import { StatusChip, Rating, Notice, EmptyState } from '../components/ui';
+import { fetchDetail } from '../lib/tmdb';
+import { findOnServer } from '../lib/server';
+import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
+import VlcButton from '../components/VlcButton';
+import { addBookmark, removeBookmark, isBookmarked } from '../lib/firebase';
+import { useAsync } from '../lib/useAsync';
 
-// ── DhakaFlix server map ──────────────────────────────────────────────────
-const SERVERS = {
-  englishMovies:     'http://172.16.50.7/DHAKA-FLIX-7/English%20Movies/',
-  englishMovies1080: 'http://172.16.50.14/DHAKA-FLIX-14/English%20Movies%20%281080p%29/',
-  hindiMovies:       'http://172.16.50.14/DHAKA-FLIX-14/Hindi%20Movies/',
-  animationMovies:   'http://172.16.50.14/DHAKA-FLIX-14/Animation%20Movies/',
-  animation1080:     'http://172.16.50.14/DHAKA-FLIX-14/Animation%20Movies%20%281080p%29/',
-  tvSeries:          'http://172.16.50.12/DHAKA-FLIX-12/TV-WEB-Series/',
-};
-
-const TV_BUCKETS = [
-  { label: 'TV Series ★  0  —  9', chars: /^[0-9]/ },
-  { label: 'TV Series ♥  A  —  L', chars: /^[A-La-l]/ },
-  { label: 'TV Series ♦  M  —  R', chars: /^[M-Rm-r]/ },
-  { label: 'TV Series ♦  S  —  Z', chars: /^[S-Zs-z]/ },
-];
-
-function normaliseStr(str) {
-  return (str || '')
-    .toLowerCase()
-    .replace(/[''`]/g, '')
-    .replace(/[^a-z0-9 ]/g, ' ')
-    .replace(/\b(the|a|an)\b/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function folderMatchesTitle(folderName, title) {
-  const clean = folderName
-    .replace(/\s*\(\d{4}\).*/i, '')
-    .replace(/\s*\d{4}\s.*/i, '')
-    .trim();
-  const normFolder = normaliseStr(clean);
-  const normTitle  = normaliseStr(title);
-  if (!normFolder || !normTitle) return false;
-  if (normFolder === normTitle) return true;
-  if (normFolder.startsWith(normTitle) || normTitle.startsWith(normFolder)) return true;
-  const titleWords  = normTitle.split(' ').filter(Boolean);
-  const folderWords = new Set(normFolder.split(' ').filter(Boolean));
-  const hits = titleWords.filter(w => folderWords.has(w)).length;
-  return titleWords.length > 0 && hits / titleWords.length >= 0.75;
-}
-
-async function fetchDir(url) {
-  const res = await fetch(`/api/parse?url=${encodeURIComponent(url)}`, {
-    signal: AbortSignal.timeout(10000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
-}
-
-// Resolve a folder URL to the first video file inside it (one level deep)
-async function resolveToVideoFile(folderUrl) {
-  try {
-    const data = await fetchDir(folderUrl);
-    const video = data.files.find(f => f.type === 'video');
-    if (video) return video.url;
-    // Check sub-folders (e.g. Season 1/)
-    for (const sub of data.folders.slice(0, 3)) {
-      try {
-        const sub2 = await fetchDir(sub.url);
-        const v = sub2.files.find(f => f.type === 'video');
-        if (v) return v.url;
-      } catch { /* skip */ }
-    }
-  } catch { /* skip */ }
-  return null;
-}
-
-async function searchIspServer(title, year, type, genres = []) {
-  try {
-    if (type === 'tv') return await searchTvSeries(title);
-    return await searchMovies(title, year, genres);
-  } catch { return null; }
-}
-
-async function searchMovies(title, year, genres) {
-  const isAnimation = genres.some(g => /animation|animated|cartoon/i.test(g));
-  const bases = isAnimation
-    ? [SERVERS.animationMovies, SERVERS.animation1080, SERVERS.englishMovies, SERVERS.englishMovies1080]
-    : [SERVERS.englishMovies, SERVERS.englishMovies1080];
-  for (const base of bases) {
-    const result = await searchMovieInBase(base, title, year);
-    if (result) return result;
-  }
-  return null;
-}
-
-async function searchMovieInBase(baseUrl, title, year) {
-  if (year) {
-    const yearUrl = `${baseUrl}(${year})/`;
-    try {
-      const data = await fetchDir(yearUrl);
-      const match = findMovieFolderInYear(data, title);
-      if (match) return match;
-    } catch { /* skip */ }
-  }
-  if (!year) {
-    try {
-      const root = await fetchDir(baseUrl);
-      for (const folder of root.folders) {
-        try {
-          const data  = await fetchDir(folder.url);
-          const match = findMovieFolderInYear(data, title);
-          if (match) return match;
-        } catch { /* skip */ }
-      }
-    } catch { /* skip */ }
-  }
-  return null;
-}
-
-function findMovieFolderInYear(data, title) {
-  // Direct video file at this level
-  const directVideo = data.files.find(f => f.type === 'video');
-  if (directVideo && folderMatchesTitle(
-    decodeURIComponent(directVideo.name).replace(/\.[^.]+$/, ''), title
-  )) return directVideo.url;
-
-  // Sub-folder matching title — return the folder url (will be resolved later)
-  const matched = data.folders.find(f =>
-    folderMatchesTitle(decodeURIComponent(f.name), title)
-  );
-  return matched ? matched.url : null;
-}
-
-async function searchTvSeries(title) {
-  const firstChar = normaliseStr(title).replace(/^(the|a|an) /, '')[0] || '';
-  const bucket = TV_BUCKETS.find(b => b.chars.test(firstChar)) || TV_BUCKETS[1];
-  const bucketUrl = `${SERVERS.tvSeries}${encodeURIComponent(bucket.label)}/`;
-  try {
-    const data = await fetchDir(bucketUrl);
-    const matched = data.folders.find(f =>
-      folderMatchesTitle(decodeURIComponent(f.name), title)
-    );
-    if (matched) return matched.url;
-  } catch { /* skip */ }
-  for (const b of TV_BUCKETS) {
-    if (b === bucket) continue;
-    const url = `${SERVERS.tvSeries}${encodeURIComponent(b.label)}/`;
-    try {
-      const data = await fetchDir(url);
-      const matched = data.folders.find(f =>
-        folderMatchesTitle(decodeURIComponent(f.name), title)
-      );
-      if (matched) return matched.url;
-    } catch { /* skip */ }
-  }
-  return null;
-}
-
-// ── Component ─────────────────────────────────────────────────────────────
 export default function MovieDetail() {
-  const { id }         = useParams();
-  const [searchParams] = useSearchParams();
-  const mediaType      = searchParams.get('type') || 'movie';
-  const navigate       = useNavigate();
+  const { id } = useParams();
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const mediaType = params.get('type') === 'tv' ? 'tv' : 'movie';
 
-  const [detail,       setDetail]       = useState(null);
-  const [loading,      setLoading]      = useState(true);
-  const [serverStatus, setServerStatus] = useState('searching');
-  const [foundUrl,     setFoundUrl]     = useState(null);
+  const { data: detail, loading } = useAsync(
+    `${id}|${mediaType}`,
+    () => fetchDetail(id, mediaType)
+  );
 
-  useEffect(() => {
-    if (!id) return;
-    setLoading(true);
-    setServerStatus('searching');
-    setFoundUrl(null);
+  // The server lookup only starts once the title is known.
+  const lookupKey = detail?.found ? `${detail.id}|${mediaType}` : null;
+  const { data: lookup } = useAsync(
+    lookupKey,
+    () => searchServer(detail, mediaType),
+    { status: 'searching', hit: null }
+  );
 
-    const lang = localStorage.getItem('tmdb_lang') || 'en-US';
+  // Only probe once a real file has been located.
+  const { data: playback } = useAsync(
+    lookup?.hit?.videoUrl || null,
+    () => inspectPlayback(lookup.hit.videoUrl)
+  );
 
-    fetch(`/api/tmdb?tmdbId=${id}&mediaType=${mediaType}&lang=${lang}`)
-      .then(r => r.json())
-      .then(async data => {
-        setDetail(data);
-        setLoading(false);
-
-        if (!data?.found) { setServerStatus('not-found'); return; }
-
-        const ispUrl = localStorage.getItem('isp_url');
-        if (!ispUrl) { setServerStatus('not-found'); return; }
-
-        try {
-          let url = await searchIspServer(
-            data.title, data.year,
-            mediaType === 'tv' ? 'tv' : 'movie',
-            data.genres || []
-          );
-
-          if (url) {
-            // If it's a folder, resolve it to an actual video file
-            const isFolder = !url.match(/\.(mkv|mp4|avi|mov|webm|ts|m4v)$/i);
-            if (isFolder) {
-              const videoUrl = await resolveToVideoFile(url);
-              url = videoUrl || url; // fallback to folder if no video found
-            }
-            setFoundUrl(url);
-            setServerStatus('found');
-          } else {
-            setServerStatus('not-found');
-          }
-        } catch {
-          setServerStatus('not-found');
+  if (loading) return <DetailSkeleton />;
+  if (!detail?.found) {
+    return (
+      <EmptyState
+        icon={SearchX}
+        title="Could not load this title"
+        hint="TMDB did not return details for it."
+        action={
+          <button onClick={() => navigate(-1)} className="control px-4 h-10 rounded-[10px] text-sm">
+            Go back
+          </button>
         }
-      })
-      .catch(() => { setLoading(false); setServerStatus('not-found'); });
-  }, [id, mediaType]);
-
-  if (loading) return <LoadingSkeleton />;
-  if (!detail || detail.error) return <NotFound navigate={navigate} />;
+      />
+    );
+  }
 
   const {
-    title, overview, year, rating, runtime, seasons,
-    poster, backdrop, genres = [], cast = [], directors = [], studios = [],
+    title, overview, tagline, year, rating, runtime, seasons, episodes,
+    poster, backdrop, genres = [], cast = [], directors = [], writers = [], studios = [],
   } = detail;
 
   return (
-    <div className="min-h-screen bg-zinc-950 page-enter">
-
-      {/* Backdrop hero */}
-      <div className="relative h-[56vw] max-h-[520px] min-h-[280px] overflow-hidden">
+    <div className="page-enter">
+      {/* Backdrop */}
+      <div className="relative h-[38vw] max-h-[430px] min-h-[220px] overflow-hidden">
         {backdrop ? (
           <img src={backdrop} alt="" className="w-full h-full object-cover object-top" />
         ) : (
-          <div className="w-full h-full bg-zinc-900" />
+          <div className="w-full h-full" style={{ background: 'var(--ink-900)' }} />
         )}
-        <div className="absolute inset-0 bg-gradient-to-r from-zinc-950 via-zinc-950/60 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-transparent to-black/30" />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(to top, var(--ink-950) 4%, transparent 70%)' }}
+        />
+        <div
+          className="absolute inset-0"
+          style={{ background: 'linear-gradient(to right, var(--ink-950) 2%, transparent 55%)' }}
+        />
+
         <button
           onClick={() => navigate(-1)}
-          className="absolute top-20 left-6 flex items-center gap-2 text-zinc-300 hover:text-white text-sm transition-colors bg-black/30 backdrop-blur-sm px-3 py-1.5 rounded-full"
+          className="absolute top-5 left-5 control flex items-center gap-2 px-3 h-9 text-sm"
+          style={{ color: 'var(--text-soft)' }}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+          <ArrowLeft size={15} aria-hidden="true" />
           Back
         </button>
       </div>
 
-      {/* Main content */}
-      <div className="relative -mt-32 px-6 pb-16 max-w-6xl mx-auto">
-        <div className="flex flex-col md:flex-row gap-8 items-start">
+      <div className="relative -mt-24 sm:-mt-28 px-5 sm:px-7 pb-16 max-w-6xl">
+        <div className="flex flex-col sm:flex-row gap-7">
+          {poster && (
+            <img
+              src={poster}
+              alt=""
+              className="hidden sm:block w-40 md:w-48 rounded-xl flex-shrink-0 self-start"
+              style={{ border: '1px solid var(--line)', boxShadow: 'var(--shadow-card)' }}
+            />
+          )}
 
-          {/* Poster */}
-          <div className="flex-shrink-0 w-44 md:w-52 rounded-xl overflow-hidden shadow-2xl shadow-black/60 ring-1 ring-white/10 self-start hidden sm:block">
-            {poster ? (
-              <img src={poster} alt={title} className="w-full block" />
-            ) : (
-              <div className="w-full aspect-[2/3] bg-zinc-800 flex items-center justify-center">
-                <svg className="w-14 h-14 text-zinc-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h10a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/>
-                </svg>
-              </div>
+          <div className="flex-1 min-w-0 sm:pt-20">
+            <p className="eyebrow mb-2">{mediaType === 'tv' ? 'Series' : 'Film'}</p>
+            <h1 className="font-display text-3xl md:text-4xl leading-[1.05] mb-3">{title}</h1>
+            {tagline && (
+              <p className="text-sm italic mb-4" style={{ color: 'var(--text-dim)' }}>{tagline}</p>
             )}
-          </div>
 
-          {/* Info */}
-          <div className="flex-1 min-w-0 pt-2 md:pt-6">
-            <span className="inline-block text-[var(--accent)] text-xs font-semibold uppercase tracking-widest mb-2">
-              {mediaType === 'tv' ? 'Series' : 'Movie'}
-            </span>
-            <h1 className="text-white text-3xl md:text-4xl font-bold leading-tight mb-3">{title}</h1>
-
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              {year && <span className="text-zinc-300 text-sm font-medium">{year}</span>}
-              {runtime && <span className="text-zinc-500 text-sm">{runtime} min</span>}
-              {seasons && <span className="text-zinc-500 text-sm">{seasons} season{seasons !== 1 ? 's' : ''}</span>}
-              {rating && (
-                <span className="flex items-center gap-1 bg-zinc-800 text-yellow-400 text-xs font-bold px-2.5 py-1 rounded-full">
-                  <svg className="w-3 h-3 fill-yellow-400" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
-                  {rating}
-                </span>
-              )}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-5 data">
+              {year && <span>{year}</span>}
+              {runtime && <span>{formatRuntime(runtime)}</span>}
+              {seasons && <span>{seasons} season{seasons === 1 ? '' : 's'}</span>}
+              {episodes && <span>{episodes} episodes</span>}
+              <Rating value={rating} size="md" />
             </div>
 
             {genres.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-5">
+              <div className="flex flex-wrap gap-1.5 mb-5">
                 {genres.map(g => (
-                  <button key={g}
+                  <button
+                    key={g}
                     onClick={() => navigate(`/channel/${encodeURIComponent(g)}?type=genre`)}
-                    className="text-xs px-3 py-1 rounded-full bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 transition-all"
-                  >{g}</button>
+                    className="control px-2.5 h-7 text-xs"
+                    style={{ color: 'var(--text-soft)' }}
+                  >
+                    {g}
+                  </button>
                 ))}
               </div>
             )}
 
             {overview && (
-              <p className="text-zinc-300 text-sm leading-relaxed mb-6 max-w-2xl">{overview}</p>
+              <p className="text-sm leading-relaxed max-w-2xl mb-7" style={{ color: 'var(--text-soft)' }}>
+                {overview}
+              </p>
             )}
 
-            {/* Watch / status */}
-            <ServerStatusButton
-              status={serverStatus}
-              foundUrl={foundUrl}
-              title={title}
+            <ServerPanel
+              lookup={lookup}
+              playback={playback}
+              detail={detail}
               navigate={navigate}
               mediaType={mediaType}
-              detail={detail}
             />
 
-            <div className="mt-6 space-y-2">
-              {directors.length > 0 && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-zinc-500 w-20 flex-shrink-0">Director</span>
-                  <span className="text-zinc-200">{directors.join(', ')}</span>
-                </div>
-              )}
+            <dl className="mt-7 space-y-2 text-sm">
+              <Credit label="Director" people={directors} navigate={navigate} />
+              <Credit label="Writer" people={writers.slice(0, 3)} navigate={navigate} />
               {studios.length > 0 && (
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="text-zinc-500 w-20 flex-shrink-0">Studio</span>
-                  <span className="text-zinc-200">{studios.slice(0, 2).join(', ')}</span>
+                <div className="flex gap-3">
+                  <dt className="w-20 flex-shrink-0" style={{ color: 'var(--text-dim)' }}>Studio</dt>
+                  <dd className="flex flex-wrap gap-x-1.5" style={{ color: 'var(--text-soft)' }}>
+                    {studios.slice(0, 3).map((studio, i) => (
+                      <span key={studio.id || studio.name}>
+                        <button
+                          onClick={() => navigate(`/channel/${studio.id}?type=studio&name=${encodeURIComponent(studio.name)}`)}
+                          className="inline-flex items-center gap-1 hover:underline"
+                        >
+                          <Building2 size={12} aria-hidden="true" />
+                          {studio.name}
+                        </button>
+                        {i < Math.min(studios.length, 3) - 1 && ','}
+                      </span>
+                    ))}
+                  </dd>
                 </div>
               )}
-            </div>
+            </dl>
           </div>
         </div>
 
-        {/* Cast */}
         {cast.length > 0 && (
-          <div className="mt-12">
-            <h2 className="text-zinc-400 text-xs uppercase tracking-widest mb-4">Cast</h2>
-            <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2">
-              {cast.map(c => (
-                <button key={c.id}
-                  onClick={() => navigate(`/channel/${encodeURIComponent(c.name)}?type=actor`)}
+          <section className="mt-14">
+            <h2 className="eyebrow mb-4">Cast</h2>
+            <div className="row-track pb-2">
+              {cast.map(person => (
+                <button
+                  key={person.id}
+                  onClick={() => navigate(`/channel/${person.id}?type=person&name=${encodeURIComponent(person.name)}`)}
                   className="flex-shrink-0 w-24 text-center group"
                 >
-                  <div className="w-16 h-16 mx-auto rounded-full overflow-hidden bg-zinc-800 ring-2 ring-transparent group-hover:ring-[var(--accent)] transition-all mb-2">
-                    {c.profile ? (
-                      <img src={c.profile} alt={c.name} className="w-full h-full object-cover" />
+                  <div
+                    className="w-16 h-16 mx-auto rounded-full overflow-hidden mb-2 transition-all"
+                    style={{ background: 'var(--ink-850)', border: '1px solid var(--line)' }}
+                  >
+                    {person.profile ? (
+                      <img src={person.profile} alt="" className="w-full h-full object-cover" loading="lazy" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-lg font-bold text-zinc-400">{c.name[0]}</div>
+                      <span
+                        className="w-full h-full flex items-center justify-center font-display text-lg"
+                        style={{ color: 'var(--text-faint)' }}
+                      >
+                        {person.name[0]}
+                      </span>
                     )}
                   </div>
-                  <p className="text-zinc-200 text-xs font-medium leading-tight group-hover:text-white transition-colors">{c.name}</p>
-                  {c.character && <p className="text-zinc-500 text-[10px] mt-0.5 leading-tight truncate">{c.character}</p>}
+                  <p className="text-xs font-medium leading-tight truncate-2">{person.name}</p>
+                  {person.character && (
+                    <p className="data mt-1 truncate">{person.character}</p>
+                  )}
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         )}
       </div>
     </div>
   );
 }
 
-function ServerStatusButton({ status, foundUrl, title, navigate, mediaType, detail }) {
-  if (status === 'searching') {
+/* ── The answer panel ────────────────────────────────────────────────────── */
+
+function ServerPanel({ lookup, playback, detail, navigate, mediaType }) {
+  const [copied, setCopied] = useState(false);
+  const { status, hit } = lookup;
+
+  if (status === 'no-server') {
     return (
-      <div className="flex items-center gap-2.5 bg-zinc-800/80 text-zinc-300 text-sm px-5 py-3 rounded-xl border border-zinc-700/50 w-fit">
-        <div className="w-3.5 h-3.5 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-        Searching your server…
+      <Notice tone="info" title="No server connected">
+        Add your ISP's directory address in Settings to check availability.
+      </Notice>
+    );
+  }
+
+  if (status === 'idle' || status === 'searching') {
+    return (
+      <div className="control inline-flex items-center gap-2.5 px-4 h-11 text-sm" style={{ color: 'var(--text-dim)' }}>
+        <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+        Searching your server
       </div>
     );
   }
 
-  if (status === 'found' && foundUrl) {
-    const isDirectVideo = !!foundUrl.match(/\.(mkv|mp4|avi|mov|webm|ts|m4v)$/i);
+  if (status === 'missing') {
     return (
-      <div className="flex items-center gap-3 flex-wrap">
-        <button
-          onClick={() => {
-            if (isDirectVideo) {
-              navigate(`/watch/${encodeURIComponent(foundUrl)}`, {
-                state: { file: { url: foundUrl, name: title, type: 'video' }, meta: detail },
-              });
-            } else {
-              // Folder couldn't be resolved — go to browse
-              navigate(`/browse?url=${encodeURIComponent(foundUrl)}`);
-            }
-          }}
-          className="flex items-center gap-3 bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-semibold px-6 py-3 rounded-xl transition-all hover:scale-[1.02] shadow-lg shadow-[var(--accent)]/25"
-        >
-          <svg className="w-5 h-5 ml-0.5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M8 5v14l11-7z"/>
-          </svg>
-          Watch Now
-        </button>
-        <span className="text-green-400 text-xs flex items-center gap-1.5">
-          <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24">
-            <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
-          </svg>
-          Available on your server
-        </span>
+      <div className="flex flex-col gap-2 items-start">
+        <StatusChip status="off" />
+        <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+          This {mediaType === 'tv' ? 'series' : 'film'} is not in your server's library yet.
+        </p>
       </div>
     );
   }
+
+  if (status === 'folder-only') {
+    return (
+      <div className="flex flex-col gap-3 items-start">
+        <StatusChip status="on" detail={hit.library.label} />
+        <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+          Found the folder, but no playable file inside it.
+        </p>
+        <button
+          onClick={() => navigate(`/browse?url=${encodeURIComponent(hit.url)}`)}
+          className="control flex items-center gap-2 px-4 h-10 text-sm"
+        >
+          <FolderOpen size={15} aria-hidden="true" />
+          Open folder
+        </button>
+      </div>
+    );
+  }
+
+  // status === 'found'
+  const media = describeMedia(hit.videoUrl);
+  const summary = mediaSummary(media);
+  const chipStatus = playback ? playback.status : 'checking';
+
+  const copyUrl = () => {
+    navigator.clipboard.writeText(hit.videoUrl).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    });
+  };
+
+  const play = () =>
+    navigate(`/watch/${encodeURIComponent(hit.videoUrl)}`, {
+      state: { file: hit.file, meta: detail },
+    });
+
+  const blocked = playback?.status === 'blocked';
 
   return (
-    <div className="flex items-center gap-4 flex-wrap">
-      <div className="flex items-center gap-2.5 bg-zinc-900 border border-zinc-700 text-zinc-400 text-sm px-5 py-3 rounded-xl">
-        <svg className="w-4 h-4 text-zinc-600 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"/>
-        </svg>
-        Not yet on server
+    <div className="flex flex-col gap-3.5 items-start">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusChip status={chipStatus === 'ok' ? 'on' : chipStatus} detail={summary} />
+        <span className="data">{hit.library.label}</span>
+        {media.dualAudio && <span className="data">Dual audio</span>}
       </div>
-      <span className="text-zinc-600 text-xs">{mediaType === 'tv' ? 'Series' : 'Movie'} not found in your ISP library</span>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {!blocked && (
+          <button
+            onClick={play}
+            className="btn-accent flex items-center gap-2 px-5 h-11 rounded-[10px] text-[15px]"
+          >
+            <Play size={16} fill="currentColor" strokeWidth={0} aria-hidden="true" />
+            Play here
+          </button>
+        )}
+
+        {/* VLC leads when the browser cannot handle the file at all. */}
+        <VlcButton url={hit.videoUrl} title={detail.title} prominent={blocked} />
+
+        <WatchlistButton
+          fileUrl={hit.videoUrl}
+          title={detail.title}
+          poster={detail.poster}
+        />
+
+        <button
+          onClick={copyUrl}
+          className="control flex items-center gap-2 px-3.5 h-11 text-[15px]"
+          style={{ color: 'var(--text-soft)' }}
+        >
+          {copied ? <Check size={15} style={{ color: 'var(--ok)' }} /> : <Copy size={15} />}
+          {copied ? 'Copied' : 'Copy link'}
+        </button>
+
+        <a
+          href={hit.videoUrl}
+          download
+          className="control flex items-center gap-2 px-3.5 h-11 text-[15px]"
+          style={{ color: 'var(--text-soft)' }}
+        >
+          <Download size={15} aria-hidden="true" />
+          Download
+        </a>
+      </div>
+
+      {blocked && (
+        <Notice tone="error" title="This file will not play in your browser">
+          {reasonText(playback.reason)} VLC handles it.
+        </Notice>
+      )}
+
+      {playback?.status === 'no-audio' && (
+        <Notice tone="warn" title="Video plays, audio will not">
+          The audio track is {media.audioCodec?.toUpperCase()}, which no browser can decode.
+          Play in VLC for sound.
+        </Notice>
+      )}
+
+      {media.dualAudio && !blocked && (
+        <Notice tone="info" title="Two audio tracks in this file">
+          Browsers cannot switch between them and will use whichever the file marks as
+          default, often the Hindi dub. Play in VLC to choose the English track, and to turn
+          on the subtitles built into the file.
+        </Notice>
+      )}
     </div>
   );
 }
 
-function LoadingSkeleton() {
+/** Save a title for later. Firebase auth is anonymous, so this needs no sign-in. */
+function WatchlistButton({ fileUrl, title, poster }) {
+  const [saved, setSaved] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    isBookmarked(fileUrl).then(v => live && setSaved(v)).catch(() => live && setSaved(false));
+    return () => { live = false; };
+  }, [fileUrl]);
+
+  const toggle = async () => {
+    const next = !saved;
+    setSaved(next);
+    try {
+      if (next) await addBookmark(fileUrl, title, poster);
+      else await removeBookmark(fileUrl);
+    } catch {
+      setSaved(!next);   // put it back if the write failed
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-zinc-950 page-enter">
-      <div className="h-[400px] bg-zinc-900 animate-pulse" />
-      <div className="px-6 -mt-32 max-w-6xl mx-auto">
-        <div className="flex gap-8">
-          <div className="w-52 aspect-[2/3] bg-zinc-800 rounded-xl animate-pulse flex-shrink-0 hidden sm:block" />
-          <div className="flex-1 pt-8 space-y-4">
-            <div className="h-3 w-16 bg-zinc-800 rounded animate-pulse" />
-            <div className="h-9 w-2/3 bg-zinc-800 rounded animate-pulse" />
-            <div className="h-4 w-1/3 bg-zinc-800 rounded animate-pulse" />
-            <div className="flex gap-2">{[1,2,3].map(i=><div key={i} className="h-6 w-16 bg-zinc-800 rounded-full animate-pulse"/>)}</div>
-            <div className="space-y-2 max-w-2xl">
-              <div className="h-3 bg-zinc-800 rounded animate-pulse" />
-              <div className="h-3 bg-zinc-800 rounded animate-pulse" />
-              <div className="h-3 w-4/5 bg-zinc-800 rounded animate-pulse" />
+    <button
+      onClick={toggle}
+      aria-pressed={!!saved}
+      className="control flex items-center gap-2 px-3.5 h-11 text-[15px]"
+      style={{ color: saved ? 'var(--accent)' : 'var(--text-soft)' }}
+    >
+      {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
+      {saved ? 'Saved' : 'Watchlist'}
+    </button>
+  );
+}
+
+/** Locate a title on the server, distinguishing "missing" from "no file inside". */
+async function searchServer(detail, mediaType) {
+  if (!localStorage.getItem('isp_url')) return { status: 'no-server', hit: null };
+
+  try {
+    const hit = await findOnServer(detail.title, {
+      year: detail.year,
+      kind: mediaType,
+      genres: detail.genres || [],
+    });
+    if (!hit) return { status: 'missing', hit: null };
+    if (!hit.videoUrl) return { status: 'folder-only', hit };
+    return { status: 'found', hit };
+  } catch {
+    return { status: 'missing', hit: null };
+  }
+}
+
+function Credit({ label, people, navigate }) {
+  if (!people?.length) return null;
+  return (
+    <div className="flex gap-3">
+      <dt className="w-20 flex-shrink-0" style={{ color: 'var(--text-dim)' }}>{label}</dt>
+      <dd className="flex flex-wrap gap-x-1.5" style={{ color: 'var(--text-soft)' }}>
+        {people.map((name, i) => (
+          <span key={name}>
+            <button
+              onClick={() => navigate(`/channel/${encodeURIComponent(name)}?type=person-name`)}
+              className="hover:underline"
+            >
+              {name}
+            </button>
+            {i < people.length - 1 && ','}
+          </span>
+        ))}
+      </dd>
+    </div>
+  );
+}
+
+function reasonText(reason) {
+  switch (reason) {
+    case 'unsupported':    return 'The container or codec is not supported here.';
+    case 'no-video-track': return 'No decodable video track was found.';
+    case 'network':        return 'The file could not be read from the server.';
+    case 'timeout':        return 'The server did not respond in time.';
+    default:               return 'The browser could not decode it.';
+  }
+}
+
+function formatRuntime(minutes) {
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function DetailSkeleton() {
+  return (
+    <div className="page-enter">
+      <div className="skeleton h-[38vw] max-h-[430px] min-h-[220px]" />
+      <div className="relative -mt-24 px-5 sm:px-7 max-w-6xl">
+        <div className="flex gap-7">
+          <div className="skeleton hidden sm:block w-40 md:w-48 aspect-[2/3] rounded-xl flex-shrink-0" />
+          <div className="flex-1 sm:pt-20 space-y-4">
+            <div className="skeleton h-3 w-16 rounded" />
+            <div className="skeleton h-10 w-2/3 rounded" />
+            <div className="skeleton h-3 w-1/3 rounded" />
+            <div className="space-y-2 max-w-2xl pt-3">
+              <div className="skeleton h-3 rounded" />
+              <div className="skeleton h-3 rounded" />
+              <div className="skeleton h-3 w-4/5 rounded" />
             </div>
-            <div className="h-12 w-48 bg-zinc-800 rounded-xl animate-pulse" />
+            <div className="skeleton h-11 w-40 rounded-[10px]" />
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-function NotFound({ navigate }) {
-  return (
-    <div className="min-h-screen bg-zinc-950 flex flex-col items-center justify-center text-center px-6">
-      <p className="text-zinc-400 text-lg mb-4">Could not load title info</p>
-      <button onClick={() => navigate(-1)} className="text-[var(--accent)] hover:underline text-sm">Go back</button>
     </div>
   );
 }

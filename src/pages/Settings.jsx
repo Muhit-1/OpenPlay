@@ -1,276 +1,404 @@
 // src/pages/Settings.jsx
-import { useState, useEffect } from 'react';
+
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  Check, X, Trash2, Loader2, ExternalLink, Radar, Download,
+  Clapperboard, Tv, Sparkles, MonitorPlay,
+} from 'lucide-react';
+import { clearMetaCache } from '../lib/tmdb';
+import { ACCENTS, CARD_SIZES, TMDB_LANGS, applyTheme } from '../lib/theme';
+import { discoverLibraries } from '../lib/discover';
+import { getLibraries, saveLibraries } from '../lib/server';
+import { downloadVlcRegistryFile, isVlcReady } from '../lib/vlc';
+import { Notice } from '../components/ui';
 
-// ── Accent color palette ──────────────────────────────────────────────────
-const ACCENTS = [
-  { label: 'Red',     value: '#dc2626', hover: '#b91c1c', light: '#fca5a5', dim: 'rgba(220,38,38,0.15)' },
-  { label: 'Blue',    value: '#2563eb', hover: '#1d4ed8', light: '#93c5fd', dim: 'rgba(37,99,235,0.15)' },
-  { label: 'Purple',  value: '#7c3aed', hover: '#6d28d9', light: '#c4b5fd', dim: 'rgba(124,58,237,0.15)' },
-  { label: 'Green',   value: '#16a34a', hover: '#15803d', light: '#86efac', dim: 'rgba(22,163,74,0.15)' },
-  { label: 'Orange',  value: '#ea580c', hover: '#c2410c', light: '#fdba74', dim: 'rgba(234,88,12,0.15)' },
-  { label: 'Pink',    value: '#db2777', hover: '#be185d', light: '#f9a8d4', dim: 'rgba(219,39,119,0.15)' },
-  { label: 'Teal',    value: '#0d9488', hover: '#0f766e', light: '#5eead4', dim: 'rgba(13,148,136,0.15)' },
-  { label: 'Amber',   value: '#d97706', hover: '#b45309', light: '#fcd34d', dim: 'rgba(217,119,6,0.15)'  },
-];
-
-const TMDB_LANGS = [
-  { label: 'English',    value: 'en-US' },
-  { label: 'Bengali',    value: 'bn-BD' },
-  { label: 'Hindi',      value: 'hi-IN' },
-  { label: 'French',     value: 'fr-FR' },
-  { label: 'German',     value: 'de-DE' },
-  { label: 'Spanish',    value: 'es-ES' },
-  { label: 'Japanese',   value: 'ja-JP' },
-  { label: 'Korean',     value: 'ko-KR' },
-  { label: 'Chinese',    value: 'zh-CN' },
-];
-
-const CARD_SIZES = [
-  { label: 'Small',   cardW: '140px', cardH: '210px' },
-  { label: 'Medium',  cardW: '176px', cardH: '256px' },
-  { label: 'Large',   cardW: '208px', cardH: '300px' },
-];
-
-/** Apply accent + card size CSS vars to :root */
-export function applyTheme() {
-  const accentKey = localStorage.getItem('accent_color') || '#dc2626';
-  const ac = ACCENTS.find(a => a.value === accentKey) || ACCENTS[0];
-  document.documentElement.style.setProperty('--accent',       ac.value);
-  document.documentElement.style.setProperty('--accent-hover', ac.hover);
-  document.documentElement.style.setProperty('--accent-light', ac.light);
-  document.documentElement.style.setProperty('--accent-dim',   ac.dim);
-
-  const sizeKey = localStorage.getItem('card_size') || 'Medium';
-  const sz = CARD_SIZES.find(s => s.label === sizeKey) || CARD_SIZES[1];
-  document.documentElement.style.setProperty('--card-width',  sz.cardW);
-  document.documentElement.style.setProperty('--card-height', sz.cardH);
-}
+const CATEGORY_ICON = {
+  movies: Clapperboard,
+  series: Tv,
+  animation: Sparkles,
+};
 
 export default function Settings() {
   const navigate = useNavigate();
 
-  const [ispUrl,     setIspUrl]     = useState(localStorage.getItem('isp_url') || '');
-  const [testing,    setTesting]    = useState(false);
-  const [testMsg,    setTestMsg]    = useState(null);
-  const [saved,      setSaved]      = useState(false);
-  const [extraUrls,  setExtraUrls]  = useState(() => {
-    try { return JSON.parse(localStorage.getItem('extra_urls') || '[]'); } catch { return []; }
-  });
-  const [newUrl, setNewUrl] = useState('');
+  const [portal, setPortal] = useState(() => localStorage.getItem('portal_url') || localStorage.getItem('isp_url') || '');
+  const [scanning, setScanning] = useState(false);
+  const [scan, setScan] = useState(null);
+  const [libraries, setLibraries] = useState(() => getLibraries());
+  const [saved, setSaved] = useState(false);
 
-  // Appearance
-  const [accentColor, setAccentColor] = useState(localStorage.getItem('accent_color') || '#dc2626');
-  const [cardSize,    setCardSize]    = useState(localStorage.getItem('card_size')    || 'Medium');
-  const [tmdbLang,    setTmdbLang]    = useState(localStorage.getItem('tmdb_lang')    || 'en-US');
+  const [accent, setAccent] = useState(() => localStorage.getItem('accent_color') || ACCENTS[0].value);
+  const [cardSize, setCardSize] = useState(() => localStorage.getItem('card_size') || 'Medium');
+  const [lang, setLang] = useState(() => localStorage.getItem('tmdb_lang') || 'en-US');
 
-  // Apply theme on any change
   useEffect(() => {
-    localStorage.setItem('accent_color', accentColor);
-    localStorage.setItem('card_size',    cardSize);
-    localStorage.setItem('tmdb_lang',    tmdbLang);
+    localStorage.setItem('accent_color', accent);
+    localStorage.setItem('card_size', cardSize);
     applyTheme();
-  }, [accentColor, cardSize, tmdbLang]);
+  }, [accent, cardSize]);
 
-  const handleTest = async () => {
-    if (!ispUrl.trim()) return;
-    setTesting(true);
-    setTestMsg(null);
-    try {
-      const res  = await fetch(`/api/proxy?url=${encodeURIComponent(ispUrl.trim())}`);
-      if (res.ok) {
-        const text = await res.text();
-        setTestMsg(text.includes('<a ')
-          ? { ok: true,  text: 'Server reached — directory listing detected.' }
-          : { ok: true,  text: 'Server reached, but no directory links found.' });
-      } else {
-        setTestMsg({ ok: false, text: `Server returned HTTP ${res.status}.` });
-      }
-    } catch (err) {
-      setTestMsg({ ok: false, text: `Could not connect: ${err.message}` });
-    } finally { setTesting(false); }
-  };
+  useEffect(() => {
+    const previous = localStorage.getItem('tmdb_lang');
+    localStorage.setItem('tmdb_lang', lang);
+    if (previous && previous !== lang) clearMetaCache();
+  }, [lang]);
 
-  const handleSave = () => {
-    const url = ispUrl.trim().endsWith('/') ? ispUrl.trim() : ispUrl.trim() + '/';
-    localStorage.setItem('isp_url',    url);
-    localStorage.setItem('extra_urls', JSON.stringify(extraUrls));
+  const discover = useCallback(async () => {
+    setScanning(true);
+    setScan(null);
+    setSaved(false);
+
+    const started = performance.now();
+    const result = await discoverLibraries(portal);
+    const ms = Math.round(performance.now() - started);
+
+    if (result.error) {
+      setScan({ ok: false, text: result.error });
+    } else {
+      setLibraries(result.libraries);
+      setScan({
+        ok: true,
+        text: `Found ${result.libraries.length} libraries across ${
+          new Set(result.libraries.map(l => l.host)).size
+        } servers in ${ms} ms.`,
+        warning: result.warning,
+      });
+    }
+    setScanning(false);
+  }, [portal]);
+
+  const save = () => {
+    const url = withTrailingSlash(portal.trim());
+    localStorage.setItem('portal_url', url);
+    localStorage.setItem('isp_url', url);
+    saveLibraries(libraries);
+    clearMetaCache();
     setSaved(true);
-    setTimeout(() => { setSaved(false); navigate('/'); }, 1200);
+    setTimeout(() => navigate('/'), 700);
   };
 
-  const handleClear = () => {
-    localStorage.removeItem('isp_url');
-    localStorage.removeItem('extra_urls');
-    setIspUrl(''); setExtraUrls([]); setTestMsg(null);
+  const clearAll = () => {
+    ['portal_url', 'isp_url', 'extra_urls', 'libraries'].forEach(k => localStorage.removeItem(k));
+    clearMetaCache();
+    setPortal('');
+    setLibraries([]);
+    setScan(null);
   };
 
-  const handleAddUrl = () => {
-    if (!newUrl.trim()) return;
-    const url = newUrl.trim().endsWith('/') ? newUrl.trim() : newUrl.trim() + '/';
-    setExtraUrls(prev => [...prev, url]);
-    setNewUrl('');
-  };
-
-  const inputClass = "w-full bg-zinc-800 text-white text-sm rounded-xl px-4 py-3 border border-zinc-700 focus:outline-none focus:ring-2 focus:ring-[var(--accent)] placeholder-zinc-600 font-mono";
+  const grouped = ['movies', 'series', 'animation'].map(category => ({
+    category,
+    items: libraries.filter(l => (l.category || 'movies') === category),
+  })).filter(g => g.items.length);
 
   return (
-    <div className="min-h-screen bg-zinc-950 pt-20 pb-12 px-6 max-w-2xl mx-auto page-enter">
+    <div className="page-enter max-w-3xl mx-auto px-5 sm:px-7 py-10">
+      <header className="mb-10">
+        <p className="eyebrow mb-2">Configuration</p>
+        <h1 className="font-display text-3xl mb-2">Settings</h1>
+        <p className="text-[15px]" style={{ color: 'var(--text-dim)' }}>
+          Connect your ISP's portal, then choose how the catalogue looks.
+        </p>
+      </header>
 
-      <h1 className="text-white text-3xl font-bold mb-1">Settings</h1>
-      <p className="text-zinc-500 mb-10 text-sm">Server connection, appearance, and metadata preferences.</p>
+      <Section
+        title="Server"
+        hint="Give the portal address — the page with the menu of libraries. OpenPlay follows it to every server behind it."
+      >
+        <div className="flex gap-2">
+          <input
+            type="url"
+            value={portal}
+            onChange={e => { setPortal(e.target.value); setScan(null); setSaved(false); }}
+            onKeyDown={e => e.key === 'Enter' && discover()}
+            placeholder="http://172.16.50.12/"
+            spellCheck={false}
+            className="control flex-1 px-3.5 h-11 mono text-[15px] outline-none"
+          />
+          <button
+            onClick={discover}
+            disabled={!portal.trim() || scanning}
+            className="control flex items-center gap-2 px-4 h-11 text-[15px] font-medium disabled:opacity-40"
+          >
+            {scanning ? <Loader2 size={15} className="animate-spin" /> : <Radar size={15} />}
+            {scanning ? 'Scanning' : 'Find libraries'}
+          </button>
+        </div>
 
-      {/* ── Server URL ── */}
-      <Section title="Primary Server URL" hint={`Your ISP's open HTTP directory — e.g. http://172.16.50.12/DHAKA-FLIX-12/`}>
-        <input
-          id="isp-url" type="url" value={ispUrl}
-          onChange={e => { setIspUrl(e.target.value); setTestMsg(null); setSaved(false); }}
-          placeholder="http://172.16.50.12/DHAKA-FLIX-12/"
-          className={inputClass}
-        />
-        {testMsg && (
-          <p className={`mt-3 text-sm rounded-lg px-4 py-2.5 ${testMsg.ok ? 'bg-green-900/30 text-green-300 border border-green-800/50' : 'bg-red-900/30 text-red-300 border border-red-800/50'}`}>
-            {testMsg.ok ? '✓ ' : '✗ '}{testMsg.text}
+        {scan && (
+          <p
+            className="mt-3 flex items-start gap-2 text-[15px] rounded-lg px-3.5 py-2.5"
+            style={{
+              color: scan.ok ? 'var(--ok)' : 'var(--error)',
+              background: `color-mix(in srgb, ${scan.ok ? 'var(--ok)' : 'var(--error)'} 9%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${scan.ok ? 'var(--ok)' : 'var(--error)'} 26%, transparent)`,
+            }}
+            role="status"
+          >
+            {scan.ok ? <Check size={16} className="mt-0.5 flex-shrink-0" /> : <X size={16} className="mt-0.5 flex-shrink-0" />}
+            {scan.text}
           </p>
         )}
-        <div className="flex gap-3 mt-4 flex-wrap">
-          <button onClick={handleTest} disabled={!ispUrl.trim() || testing}
-            className="flex items-center gap-2 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-white text-sm font-medium px-5 py-2.5 rounded-xl transition-colors">
-            {testing ? <><span className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin inline-block" /> Testing…</> : 'Test connection'}
+
+        {scan?.warning && (
+          <div className="mt-2.5">
+            <Notice tone="warn" title="Some servers did not answer">
+              {scan.warning} They are kept in the list and marked offline — a server that is
+              down now may be back later.
+            </Notice>
+          </div>
+        )}
+
+        {grouped.length > 0 && (
+          <div className="mt-5 space-y-4">
+            {grouped.map(group => {
+              const Icon = CATEGORY_ICON[group.category];
+              return (
+                <div key={group.category}>
+                  <p className="eyebrow flex items-center gap-1.5 mb-2">
+                    <Icon size={12} aria-hidden="true" />
+                    {group.category} · {group.items.length}
+                  </p>
+                  <ul className="space-y-1">
+                    {group.items.map(lib => (
+                      <li
+                        key={lib.url}
+                        className="control flex items-center gap-3 px-3.5 h-11"
+                        style={{ opacity: lib.online === false ? 0.55 : 1 }}
+                      >
+                        <span
+                          className="chip-dot flex-shrink-0"
+                          style={{ color: lib.online === false ? 'var(--text-faint)' : 'var(--ok)' }}
+                          aria-hidden="true"
+                        />
+                        <span className="text-[14px] truncate flex-1">{lib.label}</span>
+                        {lib.online === false && <span className="data flex-shrink-0">Offline</span>}
+                        <span className="data flex-shrink-0">{lib.quality}p</span>
+                        <span className="mono text-[12px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>
+                          {lib.host}
+                        </span>
+                        <button
+                          onClick={() => setLibraries(prev => prev.filter(l => l.url !== lib.url))}
+                          aria-label={`Remove ${lib.label}`}
+                          style={{ color: 'var(--text-dim)' }}
+                        >
+                          <X size={14} />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2.5 mt-5">
+          <button
+            onClick={save}
+            disabled={!portal.trim() || saved}
+            className="btn-accent flex items-center gap-2 px-4 h-10 rounded-[10px] text-[15px] disabled:opacity-40"
+          >
+            {saved && <Check size={15} />}
+            {saved ? 'Saved' : 'Save'}
           </button>
-          <button onClick={handleSave} disabled={!ispUrl.trim() || saved}
-            className="bg-[var(--accent)] hover:bg-[var(--accent-hover)] disabled:opacity-40 text-white text-sm font-semibold px-5 py-2.5 rounded-xl transition-colors">
-            {saved ? '✓ Saved!' : 'Save & go home'}
-          </button>
-          {ispUrl && (
-            <button onClick={handleClear} className="text-zinc-500 hover:text-red-400 text-sm transition-colors px-2">
-              Clear all
+          {(portal || libraries.length > 0) && (
+            <button
+              onClick={clearAll}
+              className="flex items-center gap-1.5 px-3 h-10 text-[15px] rounded-[10px]"
+              style={{ color: 'var(--text-dim)' }}
+            >
+              <Trash2 size={15} />
+              Clear
             </button>
           )}
         </div>
       </Section>
 
-      {/* ── Additional URLs ── */}
-      <Section title="Additional Server URLs" hint="Add more server IPs if your ISP has content spread across multiple servers.">
-        <div className="flex gap-2 mb-3">
-          <input type="url" value={newUrl}
-            onChange={e => setNewUrl(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAddUrl()}
-            placeholder="http://172.16.50.14/DHAKA-FLIX-14/"
-            className={inputClass + ' flex-1'} />
-          <button onClick={handleAddUrl}
-            className="bg-zinc-700 hover:bg-zinc-600 text-white text-sm px-4 py-2 rounded-xl transition-colors">
-            Add
-          </button>
-        </div>
-        {extraUrls.length === 0 ? (
-          <p className="text-zinc-600 text-xs italic">No additional servers added.</p>
-        ) : (
-          extraUrls.map((url, i) => (
-            <div key={i} className="flex items-center justify-between bg-zinc-800 rounded-lg px-4 py-2 mb-2">
-              <span className="text-zinc-300 text-sm font-mono truncate">{url}</span>
-              <button onClick={() => setExtraUrls(prev => prev.filter((_, j) => j !== i))}
-                className="text-zinc-500 hover:text-red-400 ml-3 text-xs flex-shrink-0 transition-colors">
-                Remove
-              </button>
-            </div>
-          ))
-        )}
-      </Section>
+      <VlcSection />
 
-      {/* ── Appearance ── */}
-      <Section title="Appearance">
-        {/* Accent colour */}
-        <div className="mb-6">
-          <p className="text-zinc-400 text-xs mb-3">Accent colour</p>
-          <div className="flex flex-wrap gap-3">
-            {ACCENTS.map(ac => (
-              <button
-                key={ac.value}
-                onClick={() => setAccentColor(ac.value)}
-                title={ac.label}
-                className={`w-8 h-8 rounded-full transition-all ring-offset-2 ring-offset-zinc-950
-                  ${accentColor === ac.value ? 'ring-2 ring-white scale-110' : 'hover:scale-105 ring-0'}`}
-                style={{ background: ac.value }}
-              />
-            ))}
-          </div>
-          <p className="text-zinc-600 text-xs mt-2">
-            Current: <span className="font-semibold" style={{ color: accentColor }}>
-              {ACCENTS.find(a => a.value === accentColor)?.label || accentColor}
-            </span>
-          </p>
-        </div>
-
-        {/* Card size */}
-        <div className="mb-2">
-          <p className="text-zinc-400 text-xs mb-3">Poster card size</p>
-          <div className="flex gap-3">
-            {CARD_SIZES.map(sz => (
-              <button
-                key={sz.label}
-                onClick={() => setCardSize(sz.label)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all border ${
-                  cardSize === sz.label
-                    ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
-                    : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:border-zinc-500'
-                }`}
-              >
-                {sz.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </Section>
-
-      {/* ── Metadata preferences ── */}
-      <Section title="Metadata Language" hint="Language for TMDB movie titles, overviews, and posters.">
-        <div className="flex flex-wrap gap-2">
-          {TMDB_LANGS.map(lang => (
+      <Section title="Accent">
+        <div className="flex flex-wrap gap-2.5">
+          {ACCENTS.map(a => (
             <button
-              key={lang.value}
-              onClick={() => setTmdbLang(lang.value)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition-all border ${
-                tmdbLang === lang.value
-                  ? 'bg-[var(--accent)] border-[var(--accent)] text-white'
-                  : 'bg-zinc-800 border-zinc-700 text-zinc-300 hover:border-zinc-500'
-              }`}
-            >
-              {lang.label}
-            </button>
+              key={a.value}
+              onClick={() => setAccent(a.value)}
+              title={a.label}
+              aria-label={a.label}
+              aria-pressed={accent === a.value}
+              className="w-9 h-9 rounded-lg transition-transform"
+              style={{
+                background: a.value,
+                transform: accent === a.value ? 'scale(1.12)' : 'none',
+                boxShadow: accent === a.value ? '0 0 0 2px var(--ink-950), 0 0 0 3px var(--text)' : 'none',
+              }}
+            />
           ))}
         </div>
-        <p className="text-zinc-600 text-xs mt-2">
-          Changes take effect on next browse — clears the metadata cache.
-        </p>
       </Section>
 
-      {/* ── Info ── */}
-      <section className="bg-zinc-900 rounded-2xl p-6 space-y-3 text-sm border border-zinc-800">
-        <h2 className="text-white font-semibold text-base">How it works</h2>
-        <p className="text-zinc-400">
-          OpenPlay reads your ISP's open directory, enriches each file with TMDB metadata and posters,
-          and streams video directly from your server — nothing passes through this app's backend.
-          Watch progress is saved via Firebase.
+      <Section title="Poster size">
+        <div className="flex gap-2">
+          {CARD_SIZES.map(s => (
+            <Choice key={s.label} active={cardSize === s.label} onClick={() => setCardSize(s.label)}>
+              {s.label}
+            </Choice>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Metadata language" hint="Language for titles, summaries and posters from TMDB.">
+        <div className="flex flex-wrap gap-2">
+          {TMDB_LANGS.map(l => (
+            <Choice key={l.value} active={lang === l.value} onClick={() => setLang(l.value)}>
+              {l.label}
+            </Choice>
+          ))}
+        </div>
+      </Section>
+
+      <section className="panel p-5 mt-10">
+        <h2 className="font-display text-base mb-2">How this works</h2>
+        <p className="text-[15px] leading-relaxed" style={{ color: 'var(--text-soft)' }}>
+          OpenPlay reads your server's directory listings, matches each release name against
+          TMDB for posters and details, and plays the file straight from the server. Video
+          never passes through this app's backend — only the listing does.
         </p>
-        <p className="text-zinc-500 text-xs">
-          Metadata by{' '}
-          <a href="https://www.themoviedb.org" target="_blank" rel="noreferrer" className="text-[var(--accent)] hover:underline">
-            TMDB
+        <p className="text-[13px] mt-3" style={{ color: 'var(--text-faint)' }}>
+          Metadata from{' '}
+          <a
+            href="https://www.themoviedb.org"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 hover:underline"
+            style={{ color: 'var(--accent)' }}
+          >
+            TMDB <ExternalLink size={11} />
           </a>
-          . Not endorsed or certified by TMDB.
+          . This product uses the TMDB API but is not endorsed or certified by TMDB.
         </p>
       </section>
     </div>
   );
 }
 
+/* ── VLC handoff ─────────────────────────────────────────────────────────── */
+
+function VlcSection() {
+  const [vlcPath, setVlcPath] = useState('C:\\Program Files\\VideoLAN\\VLC\\vlc.exe');
+  const [downloaded, setDownloaded] = useState(false);
+
+  const grab = () => {
+    downloadVlcRegistryFile(vlcPath.trim());
+    setDownloaded(true);
+  };
+
+  return (
+    <Section
+      title="Play in VLC"
+      hint="Some files cannot play in a browser — VLC handles every codec, and lets you switch audio track and turn on the subtitles baked into the file."
+    >
+      <Notice tone="info" title="One-time setup">
+        A web page cannot launch a program directly. Registering a URL scheme once lets the
+        <span className="mono"> Play in VLC </span> button hand the stream straight over.
+      </Notice>
+
+      <ol className="mt-4 space-y-3 text-[15px]" style={{ color: 'var(--text-soft)' }}>
+        <li className="flex gap-3">
+          <Step n={1} />
+          <div className="flex-1">
+            <p>Confirm where VLC is installed.</p>
+            <input
+              type="text"
+              value={vlcPath}
+              onChange={e => setVlcPath(e.target.value)}
+              spellCheck={false}
+              aria-label="Path to vlc.exe"
+              className="control w-full px-3 h-10 mono text-[13px] outline-none mt-2"
+            />
+          </div>
+        </li>
+
+        <li className="flex gap-3">
+          <Step n={2} />
+          <div className="flex-1">
+            <p>Download the registration file and run it. Windows will ask you to confirm.</p>
+            <button
+              onClick={grab}
+              className="control flex items-center gap-2 px-3.5 h-10 text-[14px] mt-2"
+            >
+              {downloaded ? <Check size={15} style={{ color: 'var(--ok)' }} /> : <Download size={15} />}
+              {downloaded ? 'Downloaded' : 'Download openplay-vlc-setup.reg'}
+            </button>
+          </div>
+        </li>
+
+        <li className="flex gap-3">
+          <Step n={3} />
+          <div className="flex-1">
+            <p className="flex items-center gap-2">
+              <MonitorPlay size={15} style={{ color: 'var(--accent)' }} aria-hidden="true" />
+              Done — <span className="mono">Play in VLC</span> now opens VLC directly.
+            </p>
+            <p className="text-[13px] mt-1.5" style={{ color: 'var(--text-faint)' }}>
+              It registers <span className="mono">openplay://</span> for your user account only, no
+              administrator rights needed. Undo with{' '}
+              <span className="mono">reg delete HKCU\Software\Classes\openplay /f</span>.
+              {isVlcReady() && ' Already working on this machine.'}
+            </p>
+          </div>
+        </li>
+      </ol>
+
+      <p className="text-[13px] mt-4" style={{ color: 'var(--text-faint)' }}>
+        Skipping setup is fine — the button falls back to downloading a{' '}
+        <span className="mono">.m3u</span> playlist you can open in any player.
+      </p>
+    </Section>
+  );
+}
+
+function Step({ n }) {
+  return (
+    <span
+      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center mono text-[12px] font-semibold"
+      style={{ background: 'var(--ink-800)', border: '1px solid var(--line)', color: 'var(--accent)' }}
+    >
+      {n}
+    </span>
+  );
+}
+
+/* ── Shared bits ─────────────────────────────────────────────────────────── */
+
 function Section({ title, hint, children }) {
   return (
-    <section className="mb-8">
-      <h2 className="text-zinc-200 text-sm font-semibold mb-1">{title}</h2>
-      {hint && <p className="text-zinc-500 text-xs mb-3">{hint}</p>}
+    <section className="mb-10">
+      <h2 className="text-[16px] font-semibold mb-1">{title}</h2>
+      {hint && <p className="text-[14px] mb-3" style={{ color: 'var(--text-dim)' }}>{hint}</p>}
       {children}
     </section>
   );
+}
+
+function Choice({ active, onClick, children }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-pressed={active}
+      className="px-3.5 h-10 rounded-lg text-[15px] transition-colors"
+      style={{
+        background: active ? 'var(--accent)' : 'var(--ink-800)',
+        color: active ? 'var(--accent-ink)' : 'var(--text-soft)',
+        border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
+        fontWeight: active ? 600 : 400,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+function withTrailingSlash(url) {
+  return url.endsWith('/') ? url : url + '/';
 }

@@ -1,145 +1,151 @@
 // src/components/EpisodeList.jsx
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { fetchSeasonEpisodes } from '../lib/tmdb';
+// The other videos in the same folder, grouped into seasons when they name one.
 
-function groupBySeasons(files) {
-  const seasons = {};
-  for (const f of files) {
-    const m = f.name.match(/[Ss](\d{1,2})[Ee](\d{1,2})/);
-    const season = m ? parseInt(m[1], 10) : 0;
-    const ep     = m ? parseInt(m[2], 10) : null;
-    if (!seasons[season]) seasons[season] = [];
-    seasons[season].push({ ...f, seasonNum: season, epNum: ep });
-  }
-  return seasons;
-}
+import { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Play } from 'lucide-react';
+import { fetchSeasonEpisodes } from '../lib/tmdb';
+import { parseRelease } from '../lib/release';
+import { useAsync } from '../lib/useAsync';
 
 export default function EpisodeList({ files = [], currentUrl, showMeta = null }) {
-  const navigate   = useNavigate();
-  const seasons    = groupBySeasons(files);
-  const seasonNums = Object.keys(seasons).map(Number).sort((a, b) => a - b);
-  const [activeSeason, setActiveSeason] = useState(seasonNums[0] ?? 0);
-  // Map of epNum → TMDB episode detail { name, rating, runtime, still, overview }
-  const [epDetails, setEpDetails] = useState({});
+  const navigate = useNavigate();
 
-  // Fetch TMDB episode details when we have showMeta + a real season
-  useEffect(() => {
-    if (!showMeta?.id || activeSeason === 0) return;
-    fetchSeasonEpisodes(showMeta.id, activeSeason)
-      .then(eps => {
-        if (!Array.isArray(eps)) return;
-        const map = {};
-        for (const ep of eps) { map[ep.episode_number] = ep; }
-        setEpDetails(map);
-      })
-      .catch(() => {});
-  }, [showMeta?.id, activeSeason]);
+  const seasons = useMemo(() => groupBySeason(files), [files]);
+  const seasonNumbers = useMemo(
+    () => Object.keys(seasons).map(Number).sort((a, b) => a - b),
+    [seasons]
+  );
+
+  const [selected, setSelected] = useState(null);
+
+  // Derived rather than stored, so a change of file list cannot leave the tab
+  // pointing at a season that no longer exists.
+  const active = seasonNumbers.includes(selected) ? selected : (seasonNumbers[0] ?? 0);
+
+  const { data: tmdbEpisodes } = useAsync(
+    showMeta?.id && active !== 0 ? `${showMeta.id}|${active}` : null,
+    async () => {
+      const list = await fetchSeasonEpisodes(showMeta.id, active);
+      return Array.isArray(list)
+        ? Object.fromEntries(list.map(ep => [ep.episode_number, ep]))
+        : {};
+    },
+    {}
+  );
 
   if (files.length === 0) return null;
 
-  const activeFiles = seasons[activeSeason] || [];
+  const rows = seasons[active] || [];
 
   return (
-    <div className="bg-zinc-900 rounded-xl overflow-hidden">
-      {/* Season tabs */}
-      {seasonNums.length > 1 && (
-        <div className="flex overflow-x-auto border-b border-zinc-800">
-          {seasonNums.map(s => (
+    <div className="panel overflow-hidden">
+      {seasonNumbers.length > 1 && (
+        <div className="flex overflow-x-auto no-scrollbar" style={{ borderBottom: '1px solid var(--line)' }}>
+          {seasonNumbers.map(n => (
             <button
-              key={s}
-              onClick={() => setActiveSeason(s)}
-              className={`flex-shrink-0 px-4 py-3 text-sm font-medium transition-colors ${
-                activeSeason === s
-                  ? 'text-white border-b-2 border-[var(--accent)]'
-                  : 'text-zinc-400 hover:text-white'
-              }`}
+              key={n}
+              onClick={() => setSelected(n)}
+              className="flex-shrink-0 px-4 py-2.5 text-sm transition-colors"
+              style={{
+                color: active === n ? 'var(--text)' : 'var(--text-dim)',
+                fontWeight: active === n ? 600 : 400,
+                boxShadow: active === n ? 'inset 0 -2px 0 var(--accent)' : 'none',
+              }}
             >
-              {s === 0 ? 'Episodes' : `S${s}`}
+              {n === 0 ? 'Files' : `Season ${n}`}
             </button>
           ))}
         </div>
       )}
 
-      {/* Episode rows */}
-      <div className="overflow-y-auto max-h-[68vh]">
-        {activeFiles.map((file) => {
+      <ul className="overflow-y-auto no-scrollbar" style={{ maxHeight: '68vh' }}>
+        {rows.map(file => {
           const isCurrent = file.url === currentUrl;
-          const epLabel   = file.epNum ? `E${String(file.epNum).padStart(2, '0')}` : null;
-          const tmdbEp    = file.epNum ? epDetails[file.epNum] : null;
+          const episode = file.episode ? tmdbEpisodes[file.episode] : null;
 
-          const cleanName = file.name
-            .replace(/\.[^.]+$/, '')
-            .replace(/[._]/g, ' ')
-            .replace(/[Ss]\d+[Ee]\d+.*/i, '')
-            .trim();
-
-          const displayName = tmdbEp?.name || cleanName || file.name;
-          const epRating    = tmdbEp?.vote_average
-            ? Math.round(tmdbEp.vote_average * 10) / 10
-            : null;
-          const epRuntime   = tmdbEp?.runtime || null;
-          const epStill     = tmdbEp?.still_path
-            ? `https://image.tmdb.org/t/p/w300${tmdbEp.still_path}`
+          const label = episode?.name || cleanName(file.name);
+          const rating = episode?.vote_average
+            ? Math.round(episode.vote_average * 10) / 10
             : null;
 
           return (
-            <button
-              key={file.url}
-              onClick={() => navigate(`/watch/${encodeURIComponent(file.url)}`, { state: { file } })}
-              className={`w-full flex items-start gap-3 px-3 py-2.5 text-left hover:bg-zinc-800 transition-colors ${
-                isCurrent ? 'bg-zinc-800/80 border-l-2 border-[var(--accent)]' : 'border-l-2 border-transparent'
-              }`}
-            >
-              {/* Episode still or placeholder */}
-              <div className="flex-shrink-0 w-20 h-12 rounded overflow-hidden bg-zinc-800 relative">
-                {epStill ? (
-                  <img src={epStill} alt="" className="w-full h-full object-cover" loading="lazy" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center">
-                    <svg className="w-6 h-6 text-zinc-600" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                )}
-                {isCurrent && (
-                  <div className="absolute inset-0 bg-[var(--accent)]/20 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-[var(--accent)]" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </div>
-                )}
-              </div>
-
-              {/* Text content */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5 mb-0.5">
-                  {epLabel && (
-                    <span className="text-[10px] font-mono text-[var(--accent)] font-semibold flex-shrink-0">
-                      {epLabel}
+            <li key={file.url}>
+              <button
+                onClick={() => navigate(`/watch/${encodeURIComponent(file.url)}`, { state: { file } })}
+                className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors"
+                style={{
+                  background: isCurrent ? 'var(--ink-850)' : 'transparent',
+                  boxShadow: isCurrent ? 'inset 2px 0 0 var(--accent)' : 'none',
+                }}
+              >
+                <span
+                  className="relative flex-shrink-0 w-20 h-12 rounded overflow-hidden flex items-center justify-center"
+                  style={{ background: 'var(--ink-800)' }}
+                >
+                  {episode?.still ? (
+                    <img src={episode.still} alt="" loading="lazy" className="w-full h-full object-cover" />
+                  ) : (
+                    <Play size={14} style={{ color: 'var(--text-faint)' }} aria-hidden="true" />
+                  )}
+                  {isCurrent && (
+                    <span
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={{ background: 'color-mix(in srgb, var(--accent) 30%, transparent)' }}
+                    >
+                      <Play size={13} fill="var(--accent)" strokeWidth={0} aria-hidden="true" />
                     </span>
                   )}
-                  <span className={`text-xs truncate font-medium ${isCurrent ? 'text-white' : 'text-zinc-200'}`}>
-                    {displayName}
+                </span>
+
+                <span className="flex-1 min-w-0">
+                  <span className="flex items-baseline gap-1.5">
+                    {file.episode != null && (
+                      <span className="mono text-[10px] font-semibold flex-shrink-0" style={{ color: 'var(--accent)' }}>
+                        {file.season ? `S${pad(file.season)}` : ''}E{pad(file.episode)}
+                      </span>
+                    )}
+                    <span
+                      className="text-xs truncate"
+                      style={{ color: isCurrent ? 'var(--text)' : 'var(--text-soft)', fontWeight: isCurrent ? 600 : 400 }}
+                    >
+                      {label}
+                    </span>
                   </span>
-                </div>
-                {/* Rating + runtime row */}
-                <div className="flex items-center gap-2">
-                  {epRating && (
-                    <span className="text-yellow-400 text-[10px] font-semibold">★ {epRating}</span>
-                  )}
-                  {epRuntime && (
-                    <span className="text-zinc-500 text-[10px]">{epRuntime}m</span>
-                  )}
-                  {tmdbEp?.overview && !epRating && (
-                    <span className="text-zinc-500 text-[10px] truncate">{tmdbEp.overview.slice(0, 60)}…</span>
-                  )}
-                </div>
-              </div>
-            </button>
+
+                  <span className="flex items-center gap-2.5 mt-1 data">
+                    {rating && <span style={{ color: 'var(--accent-light)' }}>{rating}</span>}
+                    {episode?.runtime && <span>{episode.runtime}m</span>}
+                    {file.size && <span>{file.size}</span>}
+                  </span>
+                </span>
+              </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
+}
+
+function groupBySeason(files) {
+  const groups = {};
+  for (const file of files) {
+    const parsed = parseRelease(file.name);
+    const season = parsed.season ?? 0;
+    (groups[season] ||= []).push({ ...file, season: parsed.season, episode: parsed.episode });
+  }
+  for (const list of Object.values(groups)) {
+    list.sort((a, b) => (a.episode ?? 0) - (b.episode ?? 0) || a.name.localeCompare(b.name));
+  }
+  return groups;
+}
+
+function cleanName(name) {
+  const parsed = parseRelease(name);
+  return parsed.title || name.replace(/\.[^.]+$/, '');
+}
+
+function pad(n) {
+  return String(n).padStart(2, '0');
 }

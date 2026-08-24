@@ -1,141 +1,388 @@
-/* src/index.css */
+/* src/index.css
+ *
+ * OpenPlay design system.
+ *
+ * The idea: this is not a streaming service, it is an index of a machine on
+ * your ISP's network. So the interface does not hide the filesystem — it
+ * typesets it. Human-facing titles are set in a characterful grotesque;
+ * anything the machine knows (paths, codecs, sizes, timecodes, IPs) is set in
+ * mono. The typeface tells you who is speaking.
+ */
+
 @import "tailwindcss";
 
-/* ── Theme CSS variables (accent color system) ── */
+/* ── Tokens ─────────────────────────────────────────────────────────────── */
+
 :root {
-  --accent:        #dc2626;   /* red-600 default */
-  --accent-hover:  #b91c1c;   /* red-700 */
-  --accent-light:  #fca5a5;   /* red-300 */
-  --accent-dim:    rgba(220,38,38,0.15);
-  --card-width:    176px;     /* w-44 = 11rem = 176px */
-  --card-height:   256px;     /* h-64 */
+  /* Cool blue-shifted ink, not neutral black — this is network equipment,
+     not a cinema. Deliberately distinct from the Netflix-clone palette. */
+  --ink-950: #080B0F;   /* page */
+  --ink-900: #0C1117;   /* surface */
+  --ink-850: #111821;   /* raised surface */
+  --ink-800: #161F2A;   /* control */
+  --ink-700: #1E2935;   /* control hover */
+  --line:    #212C3A;   /* hairline */
+  --line-bright: #2C3A4B;
+
+  /* Raised contrast across the ramp: the previous --text-dim / --text-faint
+     failed WCAG AA for body text on --ink-950. */
+  --text:      #F2F6FA;
+  --text-soft: #C3CEDA;
+  --text-dim:  #93A2B2;
+  --text-faint:#6D7C8C;
+
+  /* Warm signal amber against cool ink — a link light on a switch.
+     Overridden at runtime by the accent picker in Settings. */
+  --accent:       #F5A524;
+  --accent-hover: #D98B12;
+  --accent-light: #FFCE7A;
+  --accent-dim:   rgba(245, 165, 36, 0.14);
+  --accent-ink:   #1A1204;   /* text on an accent fill */
+
+  --ok:    #3DD68C;
+  --warn:  #F5A524;
+  --error: #FF6B6B;
+
+  --card-width:  176px;
+  --card-height: 256px;
+
+  --rail-width: 232px;
+
+  --font-display: 'Bricolage Grotesque', 'Segoe UI', system-ui, sans-serif;
+  --font-body:    'IBM Plex Sans', 'Segoe UI', system-ui, sans-serif;
+  --font-mono:    'IBM Plex Mono', ui-monospace, 'Cascadia Code', monospace;
+
+  --radius:    10px;
+  --radius-lg: 14px;
+
+  --shadow-card: 0 14px 40px -12px rgba(0, 0, 0, 0.7);
 }
 
-/* ── Hide scrollbars on horizontal scroll rows ── */
+/* ── Base ───────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { color-scheme: dark; }
+
+body {
+  margin: 0;
+  background-color: var(--ink-950);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* Visible keyboard focus everywhere, without a focus ring on mouse clicks. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── Type roles ─────────────────────────────────────────────────────────── */
+
+.font-display {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.font-mono, .mono { font-family: var(--font-mono); }
+
+/* Machine-facing data: paths, codecs, sizes, IPs. Small, wide, quiet. */
+.data {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* ── Signature element: the status chip ─────────────────────────────────────
+ * The one thing OpenPlay can say that a streaming service cannot — whether
+ * this exact file is on your server, and whether it will play here. It reads
+ * like a terminal status line and appears wherever a title does.
+ */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px 3px 7px;
+  border: 1px solid var(--line-bright);
+  border-radius: 5px;
+  background: rgba(8, 11, 15, 0.72);
+  backdrop-filter: blur(6px);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+
+.chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.chip-on      { color: var(--ok);    border-color: color-mix(in srgb, var(--ok) 40%, transparent); }
+.chip-off     { color: var(--text-faint); }
+.chip-warn    { color: var(--warn);  border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
+.chip-error   { color: var(--error); border-color: color-mix(in srgb, var(--error) 40%, transparent); }
+.chip-pending { color: var(--text-dim); }
+
+.chip-on .chip-dot { box-shadow: 0 0 8px color-mix(in srgb, var(--ok) 70%, transparent); }
+
+/* ── Surfaces ───────────────────────────────────────────────────────────── */
+
+.panel {
+  background: var(--ink-900);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.control {
+  background: var(--ink-800);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--text);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.control:hover { border-color: var(--line-bright); }
+.control:focus-within { border-color: var(--accent); }
+
+.btn-accent {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  transition: background-color 0.15s ease, transform 0.12s ease;
+}
+.btn-accent:hover { background: var(--accent-hover); }
+.btn-accent:active { transform: translateY(1px); }
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+
+.video-card { width: var(--card-width); }
+.video-card-poster { height: var(--card-height); }
+
+.poster-frame {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: var(--ink-850);
+  border: 1px solid var(--line);
+  transition: border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.card-link:hover .poster-frame,
+.card-link:focus-visible .poster-frame {
+  border-color: var(--accent);
+  transform: translateY(-3px);
+  box-shadow: var(--shadow-card);
+}
+
+.card-unavailable { opacity: 0.55; }
+.card-unavailable .poster-frame { filter: grayscale(0.7); }
+
+/* ── Horizontal rows ────────────────────────────────────────────────────── */
+
+.row-track {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-behavior: smooth;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  scroll-snap-type: x proximity;
+  /* Must match the row's horizontal padding, or snapping pulls the first card
+     flush against the container edge and eats the gutter. */
+  scroll-padding-inline: 20px;
+}
+@media (min-width: 640px) {
+  .row-track { scroll-padding-inline: 28px; }
+}
+.row-track::-webkit-scrollbar { display: none; }
+.row-track > * { scroll-snap-align: start; }
+
+/* ── Player ─────────────────────────────────────────────────────────────── */
+
+.player-shell {
+  background: #000;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  /* Lifts the frame off the page so the video reads as the focus of the view. */
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.02),
+    0 30px 70px -30px rgba(0, 0, 0, 0.9);
+}
+
+.player-shell:fullscreen {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* Ambient glow picked up from the accent, so the player feels lit rather than
+   pasted on. Kept very low contrast: it must never compete with the picture. */
+.player-shell::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(
+    120% 60% at 50% 100%,
+    var(--accent-dim) 0%,
+    transparent 60%
+  );
+  opacity: 0.5;
+  z-index: 1;
+}
+
+.player-controls {
+  background: linear-gradient(to top,
+    rgba(4, 6, 9, 0.96) 0%,
+    rgba(4, 6, 9, 0.72) 40%,
+    rgba(4, 6, 9, 0.2) 75%,
+    transparent 100%);
+  z-index: 2;
+}
+
+/* A generous hit area around a thin visual bar: easy to grab, quiet at rest. */
+.scrubber {
+  position: relative;
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.18);
+  cursor: pointer;
+  transition: height 0.14s ease;
+}
+.scrubber::after {
+  content: '';
+  position: absolute;
+  inset: -9px 0;
+}
+.scrubber:hover { height: 8px; }
+
+.scrubber-buffer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+}
+
+.scrubber-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.scrubber-fill::after {
+  content: '';
+  position: absolute;
+  right: -7px;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 22%, transparent);
+  transform: translateY(-50%) scale(0);
+  transition: transform 0.14s ease;
+}
+.scrubber:hover .scrubber-fill::after { transform: translateY(-50%) scale(1); }
+
+.player-btn {
+  border-radius: 8px;
+  transition: background-color 0.14s ease, color 0.14s ease;
+}
+.player-btn:hover { background: rgba(255, 255, 255, 0.1); }
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px; height: 11px;
+  border-radius: 50%;
+  background: var(--text);
+  cursor: pointer;
+}
+.volume-slider::-moz-range-thumb {
+  width: 11px; height: 11px;
+  border: none; border-radius: 50%;
+  background: var(--text);
+  cursor: pointer;
+}
+
+/* ── Motion ─────────────────────────────────────────────────────────────── */
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: none; }
+}
+.page-enter { animation: rise 0.28s ease both; }
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+.pulse { animation: pulse-soft 1.6s ease-in-out infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--ink-850) 25%, var(--ink-800) 37%, var(--ink-850) 63%);
+  background-size: 400% 100%;
+  animation: shimmer 1.4s ease infinite;
+}
+@keyframes shimmer {
+  from { background-position: 100% 0; }
+  to   { background-position: 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Utility ────────────────────────────────────────────────────────────── */
+
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 
-/* ── Accent utility classes driven by CSS vars ── */
-.bg-accent        { background-color: var(--accent) !important; }
-.bg-accent-hover:hover { background-color: var(--accent-hover) !important; }
-.text-accent      { color: var(--accent) !important; }
-.border-accent    { border-color: var(--accent) !important; }
-.ring-accent:focus { --tw-ring-color: var(--accent) !important; }
-
-/* ── Video.js theme overrides ── */
-.video-js {
-  font-family: inherit;
-}
-.video-js .vjs-big-play-button {
-  background-color: var(--accent) !important;
-  background-color: rgba(220, 38, 38, 0.85) !important;
-  border: none !important;
-  border-radius: 50% !important;
-  width: 72px !important;
-  height: 72px !important;
-  top: 50% !important;
-  left: 50% !important;
-  margin-top: -36px !important;
-  margin-left: -36px !important;
-  transition: transform 0.15s ease, background-color 0.15s ease !important;
-}
-.video-js .vjs-big-play-button:hover {
-  background-color: var(--accent) !important;
-  transform: scale(1.08) !important;
-}
-.video-js .vjs-control-bar {
-  background: linear-gradient(to top, rgba(0,0,0,0.9), transparent) !important;
-  height: 4rem !important;
-  padding: 0 8px !important;
-}
-.video-js .vjs-progress-control .vjs-play-progress {
-  background-color: var(--accent) !important;
-}
-.video-js .vjs-load-progress div,
-.video-js .vjs-load-progress {
-  background: rgba(255,255,255,0.2) !important;
-}
-.video-js .vjs-slider:focus { box-shadow: none !important; }
-
-/* ── Native player custom controls ── */
-.player-controls {
-  background: linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.4) 60%, transparent 100%);
-}
-
-.progress-bar-track {
-  background: rgba(255,255,255,0.2);
-  border-radius: 2px;
-  height: 4px;
-  transition: height 0.15s ease;
-  cursor: pointer;
-}
-.progress-bar-track:hover { height: 6px; }
-
-.progress-bar-fill {
-  background: var(--accent);
-  height: 100%;
-  border-radius: 2px;
-  pointer-events: none;
-  position: relative;
-}
-.progress-bar-fill::after {
-  content: '';
-  position: absolute;
-  right: -5px;
-  top: 50%;
-  transform: translateY(-50%) scale(0);
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--accent);
-  transition: transform 0.15s ease;
-}
-.progress-bar-track:hover .progress-bar-fill::after {
-  transform: translateY(-50%) scale(1);
-}
-
-/* ── Hover-preview thumbnail ── */
-.preview-thumb {
-  pointer-events: none;
-  transition: opacity 0.12s ease;
-}
-
-/* ── VideoCard sizing from CSS var ── */
-.video-card {
-  width: var(--card-width);
-}
-.video-card-poster {
-  height: var(--card-height);
-}
-
-/* ── Trending card not-available state ── */
-.card-unavailable {
-  filter: grayscale(0.4);
-  opacity: 0.75;
-}
-.card-unavailable::after {
-  content: 'Not on server';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  background: rgba(0,0,0,0.75);
-  color: #a1a1aa;
-  font-size: 10px;
-  text-align: center;
-  padding: 3px 0;
-  letter-spacing: 0.04em;
-}
-
-/* ── Smooth page transitions ── */
-@keyframes fadeSlideUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.page-enter { animation: fadeSlideUp 0.3s ease forwards; }
-
-/* ── Tailwind v4 base resets ── */
-*, *::before, *::after { box-sizing: border-box; }
-body {
-  margin: 0;
-  background-color: #09090b;
-  color: #fff;
+.truncate-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }

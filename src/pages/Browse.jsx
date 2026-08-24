@@ -1,150 +1,174 @@
 // src/pages/Browse.jsx
-import { useState, useEffect } from 'react';
+// The directory browser — the closest OpenPlay gets to showing the raw filesystem.
+
+import { useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import VideoCard from '../components/VideoCard';
+import { Folder, ChevronRight, FolderOpen, ServerOff, Settings } from 'lucide-react';
+import PosterCard from '../components/PosterCard';
+import { EmptyState, PosterSkeleton, Notice } from '../components/ui';
 import { fetchDirectory } from '../lib/tmdb';
+import { useAsync } from '../lib/useAsync';
+import { safeDecode } from '../lib/text';
 
 export default function Browse() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [params] = useSearchParams();
 
   const ispUrl = localStorage.getItem('isp_url');
-  const targetUrl = searchParams.get('url') || ispUrl;
+  const target = params.get('url') || ispUrl;
 
-  const [data,    setData]    = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [error,   setError]   = useState(null);
+  const { data, loading } = useAsync(target || null, () => fetchDirectory(target));
 
-  // Breadcrumb stack: array of { name, url }
-  const [breadcrumbs, setBreadcrumbs] = useState([]);
+  const crumbs = useMemo(() => buildCrumbs(ispUrl, target), [ispUrl, target]);
+  const videos = data?.files.filter(f => f.type === 'video') || [];
 
-  useEffect(() => {
-    if (!targetUrl) { setLoading(false); return; }
-
-    setLoading(true);
-    setError(null);
-    fetchDirectory(targetUrl)
-      .then(d => setData(d))
-      .catch(err => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [targetUrl]);
-
-  // Build breadcrumbs from URL path
-  useEffect(() => {
-    if (!ispUrl || !targetUrl) return;
-    if (targetUrl === ispUrl) {
-      setBreadcrumbs([{ name: 'Root', url: ispUrl }]);
-      return;
-    }
-    // Extract path segments between base and current
-    const base = ispUrl.replace(/\/$/, '');
-    const rest = targetUrl.replace(base, '').replace(/^\//, '');
-    const parts = rest.split('/').filter(Boolean);
-    const crumbs = [{ name: 'Root', url: ispUrl }];
-    let acc = base;
-    for (const part of parts) {
-      acc += '/' + part;
-      crumbs.push({ name: decodeURIComponent(part), url: acc + '/' });
-    }
-    setBreadcrumbs(crumbs);
-  }, [targetUrl, ispUrl]);
-
-  if (!targetUrl) {
+  if (!target) {
     return (
-      <div className="min-h-screen bg-zinc-950 pt-24 flex flex-col items-center justify-center text-center px-6">
-        <p className="text-zinc-400">No server URL configured.</p>
-        <button onClick={() => navigate('/settings')} className="mt-4 text-red-400 underline">
-          Go to Settings
-        </button>
-      </div>
+      <EmptyState
+        icon={ServerOff}
+        title="No server configured"
+        hint="Add your ISP's directory address to start browsing."
+        action={
+          <button
+            onClick={() => navigate('/settings')}
+            className="btn-accent inline-flex items-center gap-2 px-4 h-10 rounded-[10px] text-sm"
+          >
+            <Settings size={14} aria-hidden="true" />
+            Open settings
+          </button>
+        }
+      />
     );
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 pt-20 pb-12 px-6">
-
-      {/* ── Breadcrumbs ── */}
-      <nav className="flex items-center flex-wrap gap-1 mb-6 text-sm" aria-label="breadcrumb">
-        {breadcrumbs.map((crumb, i) => (
-          <span key={crumb.url} className="flex items-center gap-1">
-            {i > 0 && <span className="text-zinc-600">/</span>}
-            {i === breadcrumbs.length - 1 ? (
-              <span className="text-white font-medium">{crumb.name}</span>
-            ) : (
-              <button
-                onClick={() => navigate(`/browse?url=${encodeURIComponent(crumb.url)}`)}
-                className="text-zinc-400 hover:text-white transition-colors"
-              >
-                {crumb.name}
-              </button>
-            )}
-          </span>
-        ))}
+    <div className="page-enter px-5 sm:px-7 py-7">
+      <nav aria-label="Breadcrumb" className="mb-7">
+        <ol className="flex items-center flex-wrap gap-1 mono text-xs">
+          {crumbs.map((crumb, i) => {
+            const last = i === crumbs.length - 1;
+            return (
+              <li key={crumb.url} className="flex items-center gap-1">
+                {i > 0 && (
+                  <ChevronRight size={12} style={{ color: 'var(--text-faint)' }} aria-hidden="true" />
+                )}
+                {last ? (
+                  <span aria-current="page" style={{ color: 'var(--text)' }}>{crumb.name}</span>
+                ) : (
+                  <button
+                    onClick={() => navigate(`/browse?url=${encodeURIComponent(crumb.url)}`)}
+                    className="hover:underline transition-colors"
+                    style={{ color: 'var(--text-dim)' }}
+                  >
+                    {crumb.name}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ol>
       </nav>
 
-      {/* ── Loading ── */}
       {loading && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className="h-64 rounded-lg bg-zinc-800 animate-pulse" />
-          ))}
+        <div className="flex flex-wrap gap-4">
+          {Array.from({ length: 12 }, (_, i) => <PosterSkeleton key={i} />)}
         </div>
       )}
 
-      {/* ── Error ── */}
-      {!loading && error && (
-        <div className="text-center py-20">
-          <p className="text-red-400 mb-2">Failed to load directory</p>
-          <p className="text-zinc-500 text-sm">{error}</p>
-        </div>
+      {!loading && data?.error && (
+        <Notice tone="error" title="Could not read this folder">{data.error}</Notice>
       )}
 
-      {/* ── Content ── */}
-      {!loading && data && (
+      {!loading && data && !data.error && (
         <>
-          {/* Sub-folders */}
           {data.folders.length > 0 && (
             <section className="mb-10">
-              <h2 className="text-zinc-300 text-sm uppercase tracking-wider mb-4">Folders</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              <h2 className="eyebrow mb-3.5">
+                {data.folders.length} folder{data.folders.length === 1 ? '' : 's'}
+              </h2>
+              <div className="grid gap-2.5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
                 {data.folders.map(folder => (
                   <button
                     key={folder.url}
                     onClick={() => navigate(`/browse?url=${encodeURIComponent(folder.url)}`)}
-                    className="flex flex-col items-center justify-center gap-2 h-28 rounded-xl bg-zinc-800 hover:bg-zinc-700 hover:ring-2 hover:ring-red-500 transition-all text-white p-3"
+                    className="control flex items-center gap-3 px-3.5 h-14 text-left group"
                   >
-                    <svg className="w-10 h-10 text-yellow-500/70" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M10 4H4a2 2 0 00-2 2v12a2 2 0 002 2h16a2 2 0 002-2V8a2 2 0 00-2-2h-8l-2-2z" />
-                    </svg>
-                    <span className="text-xs text-center leading-tight line-clamp-2">{folder.name}</span>
+                    <Folder
+                      size={17}
+                      style={{ color: 'var(--accent)', flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm truncate">{folder.name}</span>
+                      {folder.date && <span className="block data mt-0.5">{folder.date}</span>}
+                    </span>
+                    <ChevronRight
+                      size={15}
+                      style={{ color: 'var(--text-faint)', flexShrink: 0 }}
+                      aria-hidden="true"
+                    />
                   </button>
                 ))}
               </div>
             </section>
           )}
 
-          {/* Video files */}
-          {data.files.filter(f => f.type === 'video').length > 0 && (
+          {videos.length > 0 && (
             <section>
-              <h2 className="text-zinc-300 text-sm uppercase tracking-wider mb-4">Videos</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                {data.files
-                  .filter(f => f.type === 'video')
-                  .map(file => (
-                    <VideoCard key={file.url} file={file} />
-                  ))}
+              <h2 className="eyebrow mb-3.5">
+                {videos.length} file{videos.length === 1 ? '' : 's'}
+              </h2>
+              <div className="flex flex-wrap gap-4">
+                {videos.map(file => <PosterCard key={file.url} file={file} />)}
               </div>
             </section>
           )}
 
-          {/* Empty state */}
-          {data.folders.length === 0 && data.files.length === 0 && (
-            <div className="text-center py-20 text-zinc-500">
-              <p>This folder is empty.</p>
-            </div>
+          {data.folders.length === 0 && videos.length === 0 && (
+            <EmptyState
+              icon={FolderOpen}
+              title="Nothing here"
+              hint="This folder holds no sub-folders or playable media."
+            />
           )}
         </>
       )}
     </div>
   );
+}
+
+/**
+ * Build a trail from the configured root down to the current folder.
+ * Falls back to the URL's own path when browsing outside the configured root.
+ */
+function buildCrumbs(rootUrl, currentUrl) {
+  if (!currentUrl) return [];
+
+  const decode = safeDecode;
+
+  if (rootUrl && currentUrl.startsWith(rootUrl)) {
+    const base = rootUrl.replace(/\/$/, '');
+    const rest = currentUrl.slice(base.length).replace(/^\/|\/$/g, '');
+    const crumbs = [{ name: 'Root', url: rootUrl }];
+
+    let acc = base;
+    for (const part of rest.split('/').filter(Boolean)) {
+      acc += '/' + part;
+      crumbs.push({ name: decode(part), url: acc + '/' });
+    }
+    return crumbs;
+  }
+
+  try {
+    const parsed = new URL(currentUrl);
+    const crumbs = [{ name: parsed.host, url: parsed.origin + '/' }];
+    let acc = parsed.origin;
+    for (const part of parsed.pathname.split('/').filter(Boolean)) {
+      acc += '/' + part;
+      crumbs.push({ name: decode(part), url: acc + '/' });
+    }
+    return crumbs;
+  } catch {
+    return [{ name: 'Root', url: currentUrl }];
+  }
 }
