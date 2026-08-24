@@ -1,232 +1,332 @@
-# 🎬 OpenPlay
+<div align="center">
 
-> A modern, open-source ISP open-directory browser and media streaming frontend.
+<img src="public/logo.png" alt="OpenPlay" width="120" />
 
-OpenPlay lets you browse and stream video files directly from any HTTP open-directory server (such as ISP LAN file servers) — with TMDB metadata enrichment, Firebase-powered watch progress, and a polished Netflix-style UI.
+# OpenPlay
 
----
+**Turn your ISP's file server into a proper streaming library.**
 
-## 📸 Screenshots
+[Features](#features) · [Screenshots](#screenshots) · [Built with](#built-with) · [Getting started](#getting-started) · [Limitations](#known-limitations)
 
-<table>
-  <tr>
-    <td><img src="https://i.ibb.co.com/m53RmZ8c/Screenshot-2026-06-17-044630.png" alt="Home Page" width="100%"/></td>
-    <td><img src="https://i.ibb.co.com/Q79v6fMR/Screenshot-2026-06-17-044653.png" alt="Trending Row" width="100%"/></td>
-  </tr>
-  <tr>
-    <td><img src="https://i.ibb.co.com/JWmNTvJm/Screenshot-2026-06-17-044716.png" alt="Browse / Catalog" width="100%"/></td>
-    <td><img src="https://i.ibb.co.com/JbDQKj1/Screenshot-2026-06-17-044748.png" alt="Movie Detail" width="100%"/></td>
-  </tr>
-  <tr>
-    <td colspan="2" align="center"><img src="https://i.ibb.co.com/DHS8kTVv/Screenshot-2026-06-17-044843.png" alt="Video Player" width="50%"/></td>
-  </tr>
-</table>
+</div>
 
 ---
 
-## ✨ Features
+## What is this?
 
-- **ISP Open-Directory Browser** — Point OpenPlay at any HTTP directory listing and it automatically parses folders and video files
-- **TMDB Metadata Enrichment** — Automatically fetches posters, ratings, overviews, cast, and genres for every file
-- **Smart Folder Resolution** — Single-video folders auto-resolve directly to the video file with full TMDB metadata
-- **Custom HTML5 Video Player** — Auto-hiding controls, scrubber hover preview, skip ±10s, volume/speed controls, fullscreen, and keyboard shortcuts
-- **Trending This Week** — TMDB weekly trending movies and series displayed on the home page; unmatched titles show a "Not on server" ribbon
-- **TMDB Catalog Browser** — Browse by genre, trending, animation, drama, sci-fi, and more with infinite scroll and filters
-- **Movie Detail Page** — Full TMDB detail view with auto-search against ISP server for direct playback
-- **Episode List** — TV series episode list with TMDB stills, ratings, and runtime per episode
-- **Firebase Watch History** — Anonymous authentication; watch progress is saved and resumed across sessions
-- **Bookmarks** — Save titles to watch later
-- **Search** — Recursive search across your ISP directory
-- **Subtitle Support** — Auto-detects `.srt` / `.vtt` subtitle files; SRT is converted to WebVTT on-the-fly
-- **Appearance Settings** — 8 accent color themes, 3 card size presets, 9 TMDB metadata language options — all persisted via `localStorage`
-- **Multiple Server URLs** — Add additional ISP server IPs in Settings
-- **Codec Warnings** — Warns when x265/HEVC or 10-bit files are detected (limited browser support)
+Many ISPs — particularly in South Asia — run a media server on their local
+network and publish it over plain HTTP. It is fast, unmetered, and enormous.
+
+It also looks like this:
+
+```
+Mercy (2026) 1080p AMZN-WEB x265 HEVC ESub [Dual Audio][Hindi 5.1+English 5.1] -MsMod.mkv
+28 Years Later-The Bone Temple (2026) 1080p AMZN [Dual Audio]/
+(2025) 1080p/
+TV Series ♦  M — R/
+```
+
+A wall of directory listings and release names, spread across half a dozen
+machines, with no posters, no search, and no way to tell what anything is.
+
+**OpenPlay is a front end for that server.** Give it one address and it finds
+every library your ISP hosts, reads each directory, works out what each release
+actually is, and pulls posters, ratings, cast and summaries from TMDB. Then it
+plays the file straight from the server — nothing is re-hosted, and video never
+passes through OpenPlay's backend.
+
+The design principle is that it does not pretend the filesystem isn't there — it
+typesets it. Every title carries a small status line saying whether that exact
+file is on your server, what it is (`1080P · MKV · HEVC`), and whether your
+browser can actually decode it.
+
+> This is a client for a server **you** already have access to. OpenPlay hosts
+> and distributes nothing. See the [legal notice](#legal-notice).
 
 ---
 
-## 🛠 Tech Stack
+## Screenshots
 
-| Layer | Technology |
+**Home — your server's newest titles, with live status**
+
+![OpenPlay home](doc/home_ss.png)
+
+**Settings — one portal address, every library found automatically**
+
+![OpenPlay settings](doc/setting_ss.png)
+
+---
+
+## Features
+
+### One address, every server
+
+Your ISP's portal page links out to libraries scattered across several machines.
+Paste that one address and OpenPlay follows it to all of them, groups what it
+finds into **Movies / Series / Animation**, and drops the games and software.
+It also checks which of those servers are actually answering and marks the rest
+offline, rather than failing later when you click.
+
+### It understands release names
+
+The heart of the app is a parser that turns
+
+```
+Mercy (2026) 1080p AMZN-WEB x265 HEVC ESub [Dual Audio][Hindi 5.1+English 5.1] -MsMod.mkv
+```
+
+into structured data — title, year, season/episode, resolution, source, codec,
+bit depth, audio format — so it can find the right TMDB entry. Results are then
+*ranked* on title match, year agreement and popularity instead of taking the
+first hit, which is how you avoid a same-named documentary showing up in place
+of the film you wanted.
+
+It also works out how each library is organised — year buckets, suffixed years
+(`(2025) 1080p`), alphabetical buckets, or flat — instead of assuming one layout.
+
+### Search that covers both
+
+One box searches TMDB **and** your server. Search a title to see whether it
+exists and whether you have it; search an actor to open their channel; search a
+filename to find the file.
+
+### Channels
+
+Every actor, director and studio is a channel listing everything they worked on —
+so Amazon MGM Studios has its films, and Tom Holland has his.
+
+### Honest playback
+
+Whether a file will play is decided by **probing the actual file**, not guessing
+from its name. Plenty of players slap a scary "x265 — use VLC" warning on
+anything with `x265` in the filename; most modern browsers play HEVC in Matroska
+perfectly well, so that warning is usually wrong and only trains you to ignore
+it. OpenPlay warns only when playback will really fail.
+
+When the browser genuinely can't cope — an unsupported codec, an audio track it
+can't switch to, subtitles baked into the file — there is a **Play in VLC**
+button that hands the stream straight over.
+
+### The rest
+
+- Custom player: hover-preview scrubber, skip, speed, volume, fullscreen, keyboard shortcuts
+- Watch progress and resume, plus History and a Watchlist
+- Raw directory browser, for when you want to see the filesystem as it is
+- Eight accent colours, three poster sizes, nine metadata languages
+
+---
+
+## Built with
+
+| | |
 |---|---|
-| Frontend | React 19, Vite 8, Tailwind CSS v4 |
-| Routing | React Router v7 |
-| HTTP Client | Native `fetch` |
-| Metadata | TMDB API |
-| Auth & DB | Firebase (Anonymous Auth + Firestore) |
-| Backend API | Vercel Serverless Functions (Node.js) |
-| HLS Fallback | Video.js (for `.m3u8` streams only) |
-| Dev Server | Express (local proxy for API functions) |
+| **Framework** | [React 19](https://react.dev) + [Vite 8](https://vitejs.dev) |
+| **Routing** | React Router v7 |
+| **Styling** | [Tailwind CSS v4](https://tailwindcss.com), with a hand-built token system |
+| **Icons** | [Lucide](https://lucide.dev) |
+| **Type** | Bricolage Grotesque (display), IBM Plex Sans (body), IBM Plex Mono (data) |
+| **Metadata** | [TMDB API](https://www.themoviedb.org) |
+| **Accounts & sync** | [Firebase](https://firebase.google.com) — anonymous auth + Firestore |
+| **Backend** | Vercel serverless functions (`/api`), Express for local dev |
+
+Three small serverless functions do all the server-side work:
+
+| Endpoint | Job |
+|---|---|
+| `api/proxy.js` | Fetches a listing or subtitle file past CORS. Host allowlist, size cap, SRT→WebVTT conversion. |
+| `api/parse.js` | Turns directory HTML (h5ai, Apache, nginx, lighttpd) into JSON. |
+| `api/tmdb.js` | TMDB gateway — ranked search, detail, trending, genres, people, studios. Keeps the API key server-side. |
 
 ---
 
-## 🚀 Getting Started
+## Getting started
 
 ### Prerequisites
 
-- Node.js >= 20
-- A TMDB API key (free at [themoviedb.org](https://www.themoviedb.org/settings/api))
-- A Firebase project (for watch history)
+- Node.js 20 or newer
+- A free [TMDB API key](https://www.themoviedb.org/settings/api)
+- A Firebase project, if you want watch history and the watchlist
+- Access to an ISP media server (OpenPlay does not provide one)
 
-### Installation
-
-```bash
-git clone https://github.com/your-username/openplay.git
-cd openplay
-npm install
-```
-
-### Environment Setup
-
-Create a `.env` file in the project root:
-
-```env
-TMDB_API_KEY=your_tmdb_api_key_here
-
-VITE_FIREBASE_API_KEY=your_firebase_api_key
-VITE_FIREBASE_AUTH_DOMAIN=your-project.firebaseapp.com
-VITE_FIREBASE_PROJECT_ID=your-project-id
-```
-
-### Running Locally
-
-You need two terminals — one for the Vite dev server, one for the local API server:
+### Install
 
 ```bash
-# Terminal 1: API server (port 3001)
-npm run dev:api
-
-# Terminal 2: Vite frontend (port 5173)
-npm run dev
+git clone https://github.com/Muhit-1/OpenPlay.git
 ```
 
-Or run both concurrently:
+```bash
+cd OpenPlay && npm install
+```
+
+### Configure
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Purpose |
+|---|---|
+| `TMDB_API_KEY` | Server-side only, never sent to the browser |
+| `VITE_FIREBASE_API_KEY` | Bundled into the client by design — secure Firebase with Firestore rules, not by hiding this |
+| `VITE_FIREBASE_AUTH_DOMAIN` | |
+| `VITE_FIREBASE_PROJECT_ID` | |
+| `ALLOWED_PROXY_HOSTS` | Optional comma-separated host allowlist for `/api/proxy`. Empty allows any host, which is fine on a LAN. **Set it before deploying publicly**, or anyone can use your function as an open proxy. |
+
+`.env` is gitignored. Never commit real keys.
+
+### Run
 
 ```bash
 npm run dev:all
 ```
 
-### Building for Production
+Vite serves the app on `http://localhost:5173` and proxies `/api/*` to the local
+Express API on port 3001.
+
+### Build
 
 ```bash
 npm run build
 ```
 
-### Deploying to Vercel
+### Deploy
 
-This project is designed for Vercel. Simply connect your repository on [vercel.com](https://vercel.com) and add your environment variables in the Vercel dashboard. The `vercel.json` rewrites handle both API routes and SPA routing automatically.
-
----
-
-## ⚙️ Configuration
-
-Once running, open the app in your browser and navigate to **Settings** to:
-
-1. **Enter your ISP server URL** — e.g. `http://172.16.50.12/DHAKA-FLIX-12/`
-2. **Test the connection** to verify the server is reachable
-3. **Add additional server URLs** for multi-server ISP setups
-4. **Choose an accent color**, card size, and TMDB metadata language
+Connect the repo on [Vercel](https://vercel.com) and set the same environment
+variables there. `vercel.json` handles API routes and SPA routing.
 
 ---
 
-## 📁 Project Structure
+## First run
+
+1. Open **Settings**
+2. Enter your ISP's **portal address** — the page with the menu of libraries,
+   e.g. `http://172.16.50.12/`
+3. Press **Find libraries**. OpenPlay follows the portal to every server behind
+   it, groups what it finds, and marks any that didn't answer
+4. **Save**
+5. Optionally set up the **Play in VLC** handoff — one `.reg` file, user-scope,
+   no administrator rights
+6. Pick an accent colour, poster size and metadata language
+
+---
+
+## Player shortcuts
+
+| Key | Action |
+|---|---|
+| `Space` / `K` | Play or pause |
+| `→` / `←` | Skip 10 seconds |
+| `↑` / `↓` | Volume |
+| `M` | Mute |
+| `F` | Fullscreen |
+
+---
+
+## Project structure
 
 ```
 openplay/
 ├── api/
-│   ├── proxy.js          # CORS proxy for ISP directory fetching
-│   ├── parse.js          # HTML directory parser → JSON
-│   └── tmdb.js           # TMDB API gateway (search, trending, genre, detail, episodes)
+│   ├── proxy.js         # Fetches listings and subtitles; host allowlist, size cap, SRT→VTT
+│   ├── parse.js         # Directory HTML → JSON
+│   └── tmdb.js          # TMDB gateway with ranked search
+├── doc/                 # Logo and screenshots
+├── public/
+│   └── logo.png         # App icon and favicon
 ├── src/
 │   ├── components/
-│   │   ├── Navbar.jsx
-│   │   ├── VideoCard.jsx        # Smart video/folder card with TMDB metadata
-│   │   ├── CategoryRow.jsx      # Horizontally scrollable ISP content row
-│   │   ├── TmdbRow.jsx          # Horizontally scrollable TMDB content row
-│   │   ├── EpisodeList.jsx      # TV season/episode list
-│   │   └── SubtitleSelector.jsx
+│   │   ├── Nav.jsx          # Left rail + top bar
+│   │   ├── PosterCard.jsx   # One card for server files and TMDB titles
+│   │   ├── Row.jsx          # Horizontal scrolling row
+│   │   ├── EpisodeList.jsx
+│   │   ├── VlcButton.jsx    # Hands a stream to VLC
+│   │   └── ui.jsx           # Status chip, rating, empty states, notices
 │   ├── pages/
-│   │   ├── Home.jsx             # Home page with hero + all rows
-│   │   ├── Browse.jsx           # ISP directory browser
-│   │   ├── Catalog.jsx          # TMDB genre/trending catalog with filters
-│   │   ├── MovieDetail.jsx      # Full TMDB detail + ISP server search
-│   │   ├── Player.jsx           # Custom HTML5 video player
-│   │   ├── Search.jsx           # Recursive ISP directory search
-│   │   ├── Channel.jsx          # Genre/actor/studio channel pages
-│   │   └── Settings.jsx         # Server URL + appearance settings
+│   │   ├── Home.jsx         # Server status + shelves of titles
+│   │   ├── Library.jsx      # Movies / Series / Animation
+│   │   ├── MyList.jsx       # History and Watchlist
+│   │   ├── Search.jsx       # TMDB + server search
+│   │   ├── Channel.jsx      # Person, studio and genre channels
+│   │   ├── MovieDetail.jsx  # Title detail + server lookup
+│   │   ├── Player.jsx       # Video player
+│   │   ├── Browse.jsx       # Raw directory browser
+│   │   └── Settings.jsx
 │   └── lib/
-│       ├── tmdb.js              # Frontend TMDB helpers + directory fetch
-│       └── firebase.js          # Firebase auth + watch history + bookmarks
-├── dev-server.js         # Local Express server for API functions
-├── vite.config.js
+│       ├── discover.js  # Finds every library from one portal address
+│       ├── release.js   # Release-name parser and title scoring
+│       ├── server.js    # Library shape detection and title lookup
+│       ├── playback.js  # Codec capability probing
+│       ├── vlc.js       # VLC handoff and scheme registration
+│       ├── tmdb.js      # Metadata fetching and caching
+│       ├── theme.js     # Accent and sizing
+│       ├── text.js      # Safe URL decoding
+│       ├── useAsync.js  # Keyed async resource hook
+│       └── firebase.js  # Auth, watch history, bookmarks
+├── dev-server.js
 └── vercel.json
 ```
 
 ---
 
-## 🎮 Keyboard Shortcuts (Player)
+## Known limitations
 
-| Key | Action |
-|---|---|
-| `Space` / `K` | Play / Pause |
-| `→` | Skip forward 10 seconds |
-| `←` | Skip backward 10 seconds |
-| `↑` | Volume up |
-| `↓` | Volume down |
-| `M` | Toggle mute |
-| `F` | Toggle fullscreen |
+These are browser limitations rather than bugs, and **Play in VLC** exists
+because of them.
 
----
-
-## ⚠️ Legal Disclaimer & Content Notice
-
-> **IMPORTANT — Please read carefully before using this software.**
-
-### Regarding Third-Party Server Content
-
-**OpenPlay is a frontend browser application only.** It does not host, store, upload, distribute, or transmit any media content. OpenPlay functions purely as a client-side interface that connects to HTTP open-directory servers configured by the user.
-
-**The developer(s) of OpenPlay are NOT responsible for:**
-
-- The content available on any ISP or third-party server that a user connects to
-- Any pirated, copyrighted, or otherwise illegal material that may be present on third-party servers
-- Any use of this application to access, stream, or distribute unauthorized copyrighted content
-- Any legal consequences arising from a user's choice of server or content accessed through this application
-
-**ISP open-directory servers configured by users may contain pirated or copyrighted material. The developer(s) of OpenPlay do not condone, encourage, or support copyright infringement in any form.**
-
-Users are solely responsible for ensuring that any content they access through this application is legally available to them in their jurisdiction.
-
-### Copyright & Intellectual Property
-
-- Metadata, posters, and information displayed in OpenPlay are provided by [The Movie Database (TMDB)](https://www.themoviedb.org). This application uses the TMDB API but is **not endorsed or certified by TMDB**.
-- All trademarks, service marks, and trade names referenced in this application are the property of their respective owners.
-- This application does not claim ownership of any media, metadata, images, or content fetched from external sources.
-
-### No Warranty
-
-This software is provided **"as is"**, without warranty of any kind, express or implied. The developer(s) shall not be held liable for any damages arising from the use of this software.
-
-### User Responsibility
-
-By using OpenPlay, you agree that:
-
-1. You will only use this application to access content that you are legally authorized to access
-2. You understand that the developer(s) have no control over, and no responsibility for, the content available on servers you connect to
-3. You assume full legal responsibility for all content you access through this application
-4. You comply with all applicable laws in your jurisdiction, including copyright law
+- **Alternate audio tracks.** Dual-audio releases carry both Hindi and English,
+  but Chrome does not implement `HTMLMediaElement.audioTracks` at all
+  (`'audioTracks' in video === false`, verified on Chrome 148), so a web page has
+  no way to enumerate or switch tracks. The browser plays whichever track the
+  file marks as default — often the dub. VLC can switch.
+- **Subtitles inside the container.** These releases store subtitles muxed into
+  the MKV (`ESub` / `MSubs` in the name) rather than as a sibling `.srt`.
+  Browsers can only read a separate subtitle file. Extracting them client-side
+  would mean demuxing a multi-gigabyte file. VLC reads them directly.
+- **Audio codecs.** AC-3, E-AC-3, DTS and TrueHD have no browser support at all.
+  The player detects these and warns rather than playing silence.
+- **Launching VLC.** No browser API can start a desktop program. OpenPlay
+  registers an `openplay://` URL scheme instead, via a user-scope `.reg` file you
+  run once; without it the button falls back to downloading an `.m3u` playlist.
+- **Library layouts.** Shape detection covers year buckets, suffixed years, flat
+  libraries and alphabetical buckets. A genuinely novel structure may still need
+  a new entry in `DEFAULT_LIBRARIES` in `src/lib/server.js`.
+- **`getContinueWatching`** needs a Firestore composite index on `userId` +
+  `watchedAt`. Without it, History stays empty.
 
 ---
 
-## 📄 License
+## Legal notice
 
-This project is open-source. See the [LICENSE](LICENSE) file for details.
+**OpenPlay is a client application. It does not host, store, upload or
+distribute any media.** It reads directory listings from servers *you* configure
+and plays files directly from them; video never passes through this app's
+backend.
+
+The authors are not responsible for the content of any third-party server, for
+any copyrighted material it may hold, or for how the application is used. Servers
+you connect to may contain infringing material; the authors do not condone
+copyright infringement.
+
+You are responsible for ensuring you are legally entitled to access whatever you
+open through this application, and for complying with the law in your
+jurisdiction.
+
+Metadata and images come from [TMDB](https://www.themoviedb.org). This product
+uses the TMDB API but is not endorsed or certified by TMDB. All trademarks belong
+to their respective owners.
+
+This software is provided "as is", without warranty of any kind.
 
 ---
 
-## 🙏 Acknowledgements
+## License
 
-- [The Movie Database (TMDB)](https://www.themoviedb.org) for their excellent free API
-- [Firebase](https://firebase.google.com) for authentication and Firestore
-- [Tailwind CSS](https://tailwindcss.com) for the utility-first styling framework
-- [React](https://react.dev) and [Vite](https://vitejs.dev) for the frontend tooling
-- [Video.js](https://videojs.com) for HLS stream fallback support
+See [LICENSE](LICENSE).
+
+---
+
+## Acknowledgements
+
+[TMDB](https://www.themoviedb.org) · [Firebase](https://firebase.google.com) ·
+[Tailwind CSS](https://tailwindcss.com) · [React](https://react.dev) ·
+[Vite](https://vitejs.dev) · [Lucide](https://lucide.dev)
