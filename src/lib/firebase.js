@@ -28,13 +28,21 @@ const firebaseConfig = {
   projectId:  import.meta.env.VITE_FIREBASE_PROJECT_ID,
 };
 
-const app  = initializeApp(firebaseConfig);
-const db   = getFirestore(app);
-const auth = getAuth(app);
+// Sync/history/watchlist are optional — an unconfigured or invalid Firebase
+// project must not crash the app for everyone else on load.
+let app = null, db = null, auth = null;
+try {
+  app  = initializeApp(firebaseConfig);
+  db   = getFirestore(app);
+  auth = getAuth(app);
+} catch (err) {
+  console.warn('[firebase] not configured, sync features disabled:', err.message);
+}
 
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
 export function ensureAuth() {
+  if (!auth) return Promise.reject(new Error('Firebase not configured'));
   return new Promise((resolve, reject) => {
     const unsub = onAuthStateChanged(auth, user => {
       unsub();
