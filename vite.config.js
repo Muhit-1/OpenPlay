@@ -4,6 +4,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  // GitHub Pages serves the repo under /OpenPlay/, everywhere else (Vercel, local) it's root.
+  base: process.env.GITHUB_PAGES ? '/OpenPlay/' : '/',
+
   plugins: [react(), tailwindcss()],
 
   server: {

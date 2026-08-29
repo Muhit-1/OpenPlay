@@ -6,6 +6,9 @@
 
 **Turn your ISP's file server into a proper streaming library.**
 
+[**Live preview →**](https://muhit-1.github.io/OpenPlay/)
+*(static UI only — GitHub Pages can't run the backend, and the app is a client for* ***your own*** *local server anyway)*
+
 [Features](#features) · [Screenshots](#screenshots) · [Built with](#built-with) · [Getting started](#getting-started) · [Limitations](#known-limitations)
 
 </div>
