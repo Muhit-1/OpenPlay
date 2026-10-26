@@ -173,7 +173,7 @@ cp .env.example .env
 | `VITE_FIREBASE_PROJECT_ID` | |
 | `ALLOWED_PROXY_HOSTS` | Comma-separated hosts `/api/proxy` may reach. Optional on a LAN install; **required** on Vercel, where the proxy refuses everything until it is set. |
 | `ALLOWED_ORIGINS` | Optional origins allowed to call the API cross-origin. Default: none. |
-| `RATE_LIMIT_PER_MIN` | Optional per-client request cap (default 240). |
+| `RATE_LIMIT_PER_MIN` | Optional per-client request cap. Default: none on a LAN install, 600 on Vercel. |
 | `PORT` / `HOST` | Optional, for `npm start` (default `0.0.0.0:8080`). |
 
 `.env` is gitignored. Never commit real keys.

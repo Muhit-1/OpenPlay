@@ -2,8 +2,10 @@
 //
 // The leading underscore keeps Vercel from deploying this file as a route.
 
+import { isHosted } from './safe-fetch.js';
+
 const WINDOW_MS = 60_000;
-const MAX_HITS  = Number(process.env.RATE_LIMIT_PER_MIN) || 240;
+const HOSTED_DEFAULT = 600;   // one page load can legitimately fire a hundred calls
 
 const hits = new Map();   // ip -> { count, resetAt }
 
@@ -14,11 +16,18 @@ function clientIp(req) {
 }
 
 /**
- * Fixed-window rate limit, per instance. Not a substitute for an edge limiter
+ * Fixed-window rate limit, per instance (hosted deployments only by default). Not a substitute for an edge limiter
  * on a public deployment, but it stops one client hammering a warm function.
  * Returns true if the request may proceed.
  */
 export function rateLimit(req, now = Date.now()) {
+  // Off for a LAN / local install: every request comes from the user's own
+  // browser, and a limit there only breaks the app. On when hosted, or when
+  // RATE_LIMIT_PER_MIN is set explicitly.
+  const configured = Number(process.env.RATE_LIMIT_PER_MIN) || 0;
+  const maxHits = configured || (isHosted() ? HOSTED_DEFAULT : 0);
+  if (!maxHits) return true;
+
   const ip = clientIp(req);
   let entry = hits.get(ip);
 
@@ -30,7 +39,7 @@ export function rateLimit(req, now = Date.now()) {
     }
   }
   entry.count += 1;
-  return entry.count <= MAX_HITS;
+  return entry.count <= maxHits;
 }
 
 /**

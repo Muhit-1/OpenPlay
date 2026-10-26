@@ -32,3 +32,6 @@ lerna-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Private working notes / plan (not for the repo)
+CLAUDE_GUIDE.md

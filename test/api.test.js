@@ -52,3 +52,8 @@ test('vercel.json carries the same CSP as the local server', () => {
   const header = cfg.headers[0].headers.find(h => h.key === 'Content-Security-Policy');
   assert.equal(header.value, CSP);
 });
+
+test('a local install is never rate limited', async () => {
+  const results = await Promise.all(Array.from({ length: 700 }, () => get('/api/proxy')));
+  assert.ok(results.every(r => r.status === 400));   // 400 = reached the handler, not 429
+});
