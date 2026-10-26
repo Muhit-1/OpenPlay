@@ -15,6 +15,7 @@
 // the actual folder names.
 
 import { titleScore, parseRelease } from './release.js';
+import { getItem, setItem } from './storage.js';
 
 const MATCH_THRESHOLD = 0.72;   // below this, treat it as "not on server"
 const CONCURRENCY     = 4;
@@ -57,7 +58,7 @@ export const DEFAULT_LIBRARIES = [
  */
 export function getLibraries() {
   try {
-    const raw = localStorage.getItem('libraries');
+    const raw = getItem('libraries');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed) && parsed.length) return parsed;
@@ -67,7 +68,7 @@ export function getLibraries() {
 }
 
 export function saveLibraries(libraries) {
-  localStorage.setItem('libraries', JSON.stringify(libraries));
+  setItem('libraries', JSON.stringify(libraries));
   clearDirCache();
 }
 

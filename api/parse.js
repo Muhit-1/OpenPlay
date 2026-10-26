@@ -3,7 +3,9 @@
 // Parses an open-directory HTML listing into JSON.
 // Handles h5ai (the DhakaFlix stack), Apache, nginx and lighttpd layouts.
 
-import { fetchText } from './proxy.js';
+import { parse } from 'node-html-parser';
+import { fetchText } from './_lib/safe-fetch.js';
+import { preflight } from './_lib/http.js';
 
 const VIDEO_EXT = new Set([
   'mp4', 'mkv', 'avi', 'mov', 'wmv', 'flv', 'webm', 'm4v', 'ts', 'mpg', 'mpeg',
@@ -19,18 +21,9 @@ const CHROME_PREFIX = /^(#|\?|javascript:|mailto:|data:)/i;
 const ASSET_PATH  = /\/_h5ai\/|\/icons\/|\/\.well-known\//i;
 const EXTERNAL    = /^(https?:)?\/\/(fonts\.|larsjung\.de|browsehappy\.com)/i;
 
-/** Strip tags and collapse whitespace — <a> content may contain <span>, <img>, etc. */
-function textOf(html) {
-  return html
-    .replace(/<[^>]*>/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+/** Collapse whitespace in text that came out of the DOM. */
+function squash(text) {
+  return text.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function safeDecode(str) {
@@ -53,17 +46,21 @@ function resolveUrl(href, baseUrl) {
  * Pull the size and last-modified cells out of the table row an <a> sits in.
  * Purely additive — listings without a table still parse fine.
  */
-function rowMetadata(html, linkIndex) {
-  const rowStart = html.lastIndexOf('<tr', linkIndex);
-  const rowEnd   = html.indexOf('</tr>', linkIndex);
-  if (rowStart === -1 || rowEnd === -1) return {};
+function rowMetadata(anchor) {
+  const row = anchor.closest('tr');
+  if (!row) return { date: null, size: null };
 
-  const row   = html.slice(rowStart, rowEnd);
-  const cells = [...row.matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi)].map(m => textOf(m[1]));
-
+  const cells = row.querySelectorAll('td, th').map(c => squash(c.text));
   const date = cells.find(c => /^\d{4}-\d{2}-\d{2}/.test(c)) || null;
   const size = cells.find(c => /^[\d.]+\s*(B|KB|MB|GB|TB|K|M|G|T)$/i.test(c)) || null;
   return { date, size };
+}
+
+/** True if `url` is on the same origin as `baseUrl` and at or below its directory. */
+function withinDirectory(url, baseUrl) {
+  const target = new URL(url);
+  const dir    = new URL('.', baseUrl);
+  return target.origin === dir.origin && target.pathname.startsWith(dir.pathname);
 }
 
 export function parseDirectoryHTML(html, baseUrl) {
@@ -71,13 +68,11 @@ export function parseDirectoryHTML(html, baseUrl) {
   const files   = [];
   const seen    = new Set();
 
-  // Non-greedy body so nested markup inside the anchor is captured, not skipped.
-  const linkRegex = /<a\s[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const root = parse(String(html));
 
-  let match;
-  while ((match = linkRegex.exec(html)) !== null) {
-    const rawHref = match[1].trim();
-    const label   = textOf(match[2]);
+  for (const anchor of root.querySelectorAll('a[href]')) {
+    const rawHref = (anchor.getAttribute('href') || '').trim();
+    const label   = squash(anchor.text);
 
     if (!rawHref) continue;
     if (CHROME_EXACT.has(rawHref)) continue;
@@ -89,13 +84,13 @@ export function parseDirectoryHTML(html, baseUrl) {
     const absoluteUrl = resolveUrl(rawHref, baseUrl);
     if (!absoluteUrl) continue;
 
-    // Never walk above the directory we were asked to read.
-    if (!absoluteUrl.startsWith(new URL('.', baseUrl).origin)) continue;
+    // Never walk above (or away from) the directory we were asked to read.
+    if (!withinDirectory(absoluteUrl, baseUrl)) continue;
     if (absoluteUrl.replace(/\/$/, '') === baseUrl.replace(/\/$/, '')) continue;
     if (seen.has(absoluteUrl)) continue;
     seen.add(absoluteUrl);
 
-    const { date, size } = rowMetadata(html, match.index);
+    const { date, size } = rowMetadata(anchor);
     const pathPart = absoluteUrl.split('?')[0].split('#')[0];
 
     if (rawHref.endsWith('/') || pathPart.endsWith('/')) {
@@ -119,14 +114,10 @@ export function parseDirectoryHTML(html, baseUrl) {
 }
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (preflight(req, res)) return;
 
   const { url } = req.query;
-  if (!url) return res.status(400).json({ error: 'Missing url parameter' });
+  if (!url || typeof url !== 'string') return res.status(400).json({ error: 'Missing url parameter' });
 
   try {
     // Direct call — no HTTP round-trip back into our own /api/proxy.

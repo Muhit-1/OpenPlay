@@ -2,6 +2,7 @@
 // Accent and sizing preferences, applied as CSS custom properties.
 
 import { useEffect } from 'react';
+import { getItem } from './storage.js';
 
 // Warm amber leads: a link light on a network switch, and a deliberate
 // temperature contrast against the cool ink of the interface.
@@ -43,7 +44,7 @@ function hexToRgba(hex, alpha) {
 export function applyTheme() {
   const root = document.documentElement;
 
-  const saved  = localStorage.getItem('accent_color') || ACCENTS[0].value;
+  const saved  = getItem('accent_color') || ACCENTS[0].value;
   const accent = ACCENTS.find(a => a.value === saved) || ACCENTS[0];
   root.style.setProperty('--accent',       accent.value);
   root.style.setProperty('--accent-hover', accent.hover);
@@ -51,7 +52,7 @@ export function applyTheme() {
   root.style.setProperty('--accent-ink',   accent.ink);
   root.style.setProperty('--accent-dim',   hexToRgba(accent.value, 0.14));
 
-  const sizeName = localStorage.getItem('card_size') || 'Medium';
+  const sizeName = getItem('card_size') || 'Medium';
   const size = CARD_SIZES.find(s => s.label === sizeName) || CARD_SIZES[1];
   root.style.setProperty('--card-width',  size.w);
   root.style.setProperty('--card-height', size.h);

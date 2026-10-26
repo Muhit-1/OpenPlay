@@ -1,17 +1,19 @@
 // src/App.jsx
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Rail, TopBar } from './components/Nav';
 import Home        from './pages/Home';
-import Library     from './pages/Library';
-import MyList      from './pages/MyList';
-import Browse      from './pages/Browse';
-import Channel     from './pages/Channel';
-import Player      from './pages/Player';
-import Search      from './pages/Search';
-import Settings    from './pages/Settings';
-import MovieDetail from './pages/MovieDetail';
+const Library = lazy(() => import('./pages/Library'));
+const MyList = lazy(() => import('./pages/MyList'));
+const Browse = lazy(() => import('./pages/Browse'));
+const Channel = lazy(() => import('./pages/Channel'));
+const Player = lazy(() => import('./pages/Player'));
+const Search = lazy(() => import('./pages/Search'));
+const Settings = lazy(() => import('./pages/Settings'));
+const MovieDetail = lazy(() => import('./pages/MovieDetail'));
 import { useTheme } from './lib/theme';
+import ErrorBoundary from './components/ErrorBoundary';
+import { Spinner } from './components/ui';
 
 export default function App() {
   return (
@@ -32,7 +34,9 @@ function Shell() {
       <div className="lg:pl-[var(--rail-width)] flex flex-col min-h-screen">
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
-        <main className="flex-1">
+        <main className="flex-1" id="main">
+          <ErrorBoundary>
+          <Suspense fallback={<div className="flex justify-center py-24"><Spinner /></div>}>
           <Routes>
             <Route path="/"          element={<Home />} />
 
@@ -50,9 +54,23 @@ function Shell() {
             <Route path="/channel/:id"       element={<Channel />} />
             <Route path="/detail/:id"        element={<MovieDetail />} />
             <Route path="/watch/:encodedUrl" element={<Player />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
+          </ErrorBoundary>
         </main>
       </div>
+    </div>
+  );
+}
+
+function NotFound() {
+  return (
+    <div className="px-6 py-24 text-center">
+      <h1 className="text-2xl font-bold">Page not found</h1>
+      <p className="mt-2 text-sm" style={{ color: 'var(--text-dim)' }}>
+        That address doesn&apos;t lead anywhere in OpenPlay.
+      </p>
     </div>
   );
 }

@@ -17,6 +17,7 @@ import { Spinner, Notice } from '../components/ui';
 import { fetchDirectory, fetchTrending, fetchByGenre } from '../lib/tmdb';
 import { getContinueWatching } from '../lib/firebase';
 import { librariesFor, libraryIndex, libraryTitles } from '../lib/server';
+import { getItem } from '../lib/storage.js';
 
 const GENRE_ROWS = [
   { id: 28,  label: 'Action',          key: 'action' },
@@ -27,7 +28,7 @@ const GENRE_ROWS = [
 
 export default function Home() {
   const navigate = useNavigate();
-  const ispUrl = localStorage.getItem('isp_url');
+  const ispUrl = getItem('isp_url');
 
   const [server, setServer] = useState({ state: 'loading', folders: [], files: [], ms: null, error: null });
   const [continueList, setContinueList] = useState([]);
@@ -50,7 +51,7 @@ export default function Home() {
     let live = true;
 
     const started = performance.now();
-    const extra = safeParse(localStorage.getItem('extra_urls'), []);
+    const extra = safeParse(getItem('extra_urls'), []);
 
     Promise.all([ispUrl, ...extra].map(url => fetchDirectory(url))).then(results => {
       if (!live) return;

@@ -127,14 +127,14 @@ button that hands the stream straight over.
 | **Type** | Bricolage Grotesque (display), IBM Plex Sans (body), IBM Plex Mono (data) |
 | **Metadata** | [TMDB API](https://www.themoviedb.org) |
 | **Accounts & sync** | [Firebase](https://firebase.google.com) — anonymous auth + Firestore |
-| **Backend** | Vercel serverless functions (`/api`), Express for local dev |
+| **Backend** | Express (`server.js`) for LAN installs; the same `/api` handlers also run as Vercel functions |
 
-Three small serverless functions do all the server-side work:
+Three small API handlers do all the server-side work:
 
 | Endpoint | Job |
 |---|---|
-| `api/proxy.js` | Fetches a listing or subtitle file past CORS. Host allowlist, size cap, SRT→WebVTT conversion. |
-| `api/parse.js` | Turns directory HTML (h5ai, Apache, nginx, lighttpd) into JSON. |
+| `api/proxy.js` | Fetches a listing or subtitle file past CORS. Blocks metadata/link-local addresses, re-checks every redirect, host allowlist, streamed size cap, SRT→WebVTT conversion. |
+| `api/parse.js` | Turns directory HTML (h5ai, Apache, nginx, lighttpd) into JSON, using a real HTML parser. |
 | `api/tmdb.js` | TMDB gateway — ranked search, detail, trending, genres, people, studios. Keeps the API key server-side. |
 
 ---
@@ -170,11 +170,14 @@ cp .env.example .env
 | `VITE_FIREBASE_API_KEY` | Bundled into the client by design — secure Firebase with Firestore rules, not by hiding this |
 | `VITE_FIREBASE_AUTH_DOMAIN` | |
 | `VITE_FIREBASE_PROJECT_ID` | |
-| `ALLOWED_PROXY_HOSTS` | Optional comma-separated host allowlist for `/api/proxy`. Empty allows any host, which is fine on a LAN. **Set it before deploying publicly**, or anyone can use your function as an open proxy. |
+| `ALLOWED_PROXY_HOSTS` | Comma-separated hosts `/api/proxy` may reach. Optional on a LAN install; **required** on Vercel, where the proxy refuses everything until it is set. |
+| `ALLOWED_ORIGINS` | Optional origins allowed to call the API cross-origin. Default: none. |
+| `RATE_LIMIT_PER_MIN` | Optional per-client request cap (default 240). |
+| `PORT` / `HOST` | Optional, for `npm start` (default `0.0.0.0:8080`). |
 
 `.env` is gitignored. Never commit real keys.
 
-### Run
+### Run (development)
 
 ```bash
 npm run dev:all
@@ -183,16 +186,46 @@ npm run dev:all
 Vite serves the app on `http://localhost:5173` and proxies `/api/*` to the local
 Express API on port 3001.
 
-### Build
+### Run (your network) — the intended setup
+
+OpenPlay must run somewhere that can reach your ISP's servers, and be opened
+over plain `http://` (browsers refuse to play `http://` video from an `https://`
+page).
 
 ```bash
-npm run build
+npm run build && npm start        # http://<this-machine>:8080
 ```
- 
-### Deploy
 
-Connect the repo on [Vercel](https://vercel.com) and set the same environment
-variables there. `vercel.json` handles API routes and SPA routing.
+or with Docker:
+
+```bash
+docker build -t openplay .
+docker run -p 8080:8080 --env-file .env openplay
+```
+
+### Checks
+
+```bash
+npm run check        # lint + tests + production build (also run by CI)
+```
+
+### Firebase (optional)
+
+Watch history and the watchlist use Firestore. Deploy the committed rules and
+indexes once, otherwise History stays empty and anyone could read other users'
+data:
+
+```bash
+npx firebase-tools deploy --only firestore:rules,firestore:indexes
+```
+
+### Hosting on Vercel
+
+Possible, with limits. A cloud function **cannot reach private addresses**
+like `172.16.x.x`, and an `https://` site cannot play `http://` video, so this
+only suits media servers with public addresses. Set `ALLOWED_PROXY_HOSTS`;
+without it the proxy refuses every request. `vercel.json` sets the security
+headers and routing.
 
 ---
 
@@ -227,9 +260,12 @@ variables there. `vercel.json` handles API routes and SPA routing.
 ```
 openplay/
 ├── api/
-│   ├── proxy.js         # Fetches listings and subtitles; host allowlist, size cap, SRT→VTT
+│   ├── _lib/            # SSRF-safe fetch, rate limit, CORS
+│   ├── proxy.js         # Fetches listings and subtitles; SRT→VTT
 │   ├── parse.js         # Directory HTML → JSON
 │   └── tmdb.js          # TMDB gateway with ranked search
+├── shared/              # Code used by both the browser and the API
+├── test/                # node --test suites
 ├── doc/                 # Logo and screenshots
 ├── public/
 │   └── logo.png         # App icon and favicon
@@ -262,7 +298,9 @@ openplay/
 │       ├── text.js      # Safe URL decoding
 │       ├── useAsync.js  # Keyed async resource hook
 │       └── firebase.js  # Auth, watch history, bookmarks
-├── dev-server.js
+├── server.js            # Express: API (+ built UI with --prod)
+├── Dockerfile
+├── firestore.rules      # Per-user access rules
 └── vercel.json
 ```
 
@@ -290,8 +328,11 @@ because of them.
 - **Library layouts.** Shape detection covers year buckets, suffixed years, flat
   libraries and alphabetical buckets. A genuinely novel structure may still need
   a new entry in `DEFAULT_LIBRARIES` in `src/lib/server.js`.
-- **`getContinueWatching`** needs a Firestore composite index on `userId` +
-  `watchedAt`. Without it, History stays empty.
+- **Firestore indexes.** History and the watchlist need the composite indexes in
+  `firestore.indexes.json`; deploy them (see Firebase above) or they stay empty.
+- **DNS rebinding.** The proxy resolves a hostname before fetching it, but does
+  not pin the connection to that address. Use `ALLOWED_PROXY_HOSTS` with IPs on
+  any exposed deployment.
 
 ---
 

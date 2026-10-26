@@ -19,6 +19,8 @@
 // Without the scheme registered there is still the .m3u route, which needs no
 // setup but requires the user to open the downloaded file.
 
+import { getItem, setItem } from './storage.js';
+
 const SCHEME = 'openplay';
 const DEFAULT_VLC_PATH = 'C:\\Program Files\\VideoLAN\\VLC\\vlc.exe';
 
@@ -144,9 +146,9 @@ function safeFilename(name) {
 
 /** Remembered after a successful handoff, to stop nagging about setup. */
 export function markVlcReady() {
-  localStorage.setItem('vlc_ready', '1');
+  setItem('vlc_ready', '1');
 }
 
 export function isVlcReady() {
-  return localStorage.getItem('vlc_ready') === '1';
+  return getItem('vlc_ready') === '1';
 }

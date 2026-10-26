@@ -15,6 +15,7 @@ import { EmptyState, Spinner, PosterSkeleton } from '../components/ui';
 import { listDir } from '../lib/server';
 import { searchTmdb } from '../lib/tmdb';
 import { useAsync } from '../lib/useAsync';
+import { getItem } from '../lib/storage.js';
 
 const MAX_DEPTH   = 3;
 const MAX_RESULTS = 120;
@@ -48,12 +49,12 @@ export default function Search() {
   const cancelRef = useRef({ cancelled: false });
 
   useEffect(() => {
-    const root = localStorage.getItem('isp_url');
+    const root = getItem('isp_url');
     if (!query || !root) return;
 
     const token = { cancelled: false };
     cancelRef.current = token;
-    const extra = safeParse(localStorage.getItem('extra_urls'), []);
+    const extra = safeParse(getItem('extra_urls'), []);
 
     walk([root, ...extra], query.toLowerCase(), token, {
       onHit: hits => setRun(prev => ({

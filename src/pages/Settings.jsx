@@ -12,6 +12,7 @@ import { discoverLibraries } from '../lib/discover';
 import { getLibraries, saveLibraries } from '../lib/server';
 import { downloadVlcRegistryFile, isVlcReady } from '../lib/vlc';
 import { Notice } from '../components/ui';
+import { getItem, removeItem, setItem } from '../lib/storage.js';
 
 const CATEGORY_ICON = {
   movies: Clapperboard,
@@ -22,25 +23,25 @@ const CATEGORY_ICON = {
 export default function Settings() {
   const navigate = useNavigate();
 
-  const [portal, setPortal] = useState(() => localStorage.getItem('portal_url') || localStorage.getItem('isp_url') || '');
+  const [portal, setPortal] = useState(() => getItem('portal_url') || getItem('isp_url') || '');
   const [scanning, setScanning] = useState(false);
   const [scan, setScan] = useState(null);
   const [libraries, setLibraries] = useState(() => getLibraries());
   const [saved, setSaved] = useState(false);
 
-  const [accent, setAccent] = useState(() => localStorage.getItem('accent_color') || ACCENTS[0].value);
-  const [cardSize, setCardSize] = useState(() => localStorage.getItem('card_size') || 'Medium');
-  const [lang, setLang] = useState(() => localStorage.getItem('tmdb_lang') || 'en-US');
+  const [accent, setAccent] = useState(() => getItem('accent_color') || ACCENTS[0].value);
+  const [cardSize, setCardSize] = useState(() => getItem('card_size') || 'Medium');
+  const [lang, setLang] = useState(() => getItem('tmdb_lang') || 'en-US');
 
   useEffect(() => {
-    localStorage.setItem('accent_color', accent);
-    localStorage.setItem('card_size', cardSize);
+    setItem('accent_color', accent);
+    setItem('card_size', cardSize);
     applyTheme();
   }, [accent, cardSize]);
 
   useEffect(() => {
-    const previous = localStorage.getItem('tmdb_lang');
-    localStorage.setItem('tmdb_lang', lang);
+    const previous = getItem('tmdb_lang');
+    setItem('tmdb_lang', lang);
     if (previous && previous !== lang) clearMetaCache();
   }, [lang]);
 
@@ -70,8 +71,8 @@ export default function Settings() {
 
   const save = () => {
     const url = withTrailingSlash(portal.trim());
-    localStorage.setItem('portal_url', url);
-    localStorage.setItem('isp_url', url);
+    setItem('portal_url', url);
+    setItem('isp_url', url);
     saveLibraries(libraries);
     clearMetaCache();
     setSaved(true);
@@ -79,7 +80,7 @@ export default function Settings() {
   };
 
   const clearAll = () => {
-    ['portal_url', 'isp_url', 'extra_urls', 'libraries'].forEach(k => localStorage.removeItem(k));
+    ['portal_url', 'isp_url', 'extra_urls', 'libraries'].forEach(k => removeItem(k));
     clearMetaCache();
     setPortal('');
     setLibraries([]);
@@ -138,6 +139,16 @@ export default function Settings() {
             {scan.ok ? <Check size={16} className="mt-0.5 flex-shrink-0" /> : <X size={16} className="mt-0.5 flex-shrink-0" />}
             {scan.text}
           </p>
+        )}
+
+        {window.location.protocol === 'https:' && /^http:\/\//i.test(portal.trim()) && (
+          <div className="mt-2.5">
+            <Notice tone="warn" title="This page is HTTPS, your server is HTTP">
+              Browsers refuse to play http:// video on an https:// page, and a cloud-hosted
+              OpenPlay cannot reach private addresses like 172.16.x.x. Run OpenPlay on your own
+              network (<span className="mono">npm start</span> or Docker) and open it over http://.
+            </Notice>
+          </div>
         )}
 
         {scan?.warning && (

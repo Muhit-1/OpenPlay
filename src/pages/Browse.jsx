@@ -9,12 +9,13 @@ import { EmptyState, PosterSkeleton, Notice } from '../components/ui';
 import { fetchDirectory } from '../lib/tmdb';
 import { useAsync } from '../lib/useAsync';
 import { safeDecode } from '../lib/text';
+import { getItem } from '../lib/storage.js';
 
 export default function Browse() {
   const navigate = useNavigate();
   const [params] = useSearchParams();
 
-  const ispUrl = localStorage.getItem('isp_url');
+  const ispUrl = getItem('isp_url');
   const target = params.get('url') || ispUrl;
 
   const { data, loading } = useAsync(target || null, () => fetchDirectory(target));

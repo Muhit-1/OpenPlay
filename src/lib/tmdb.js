@@ -3,6 +3,7 @@
 
 import { parseRelease } from './release.js';
 import { listDir, clearDirCache } from './server.js';
+import { getItem } from './storage.js';
 
 export { parseRelease };
 
@@ -24,7 +25,7 @@ export function clearMetaCache() {
 }
 
 function getLang() {
-  return localStorage.getItem('tmdb_lang') || 'en-US';
+  return getItem('tmdb_lang') || 'en-US';
 }
 
 async function getJSON(path) {

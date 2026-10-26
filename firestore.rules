@@ -1,0 +1,40 @@
+rules_version = '2';
+
+// Each user (anonymous auth is enough) can touch only their own documents.
+// Document ids are "<uid>_<encoded url>" and every document carries userId,
+// so both are checked.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function ownsId(docId) {
+      return docId.matches('^' + request.auth.uid + '_.*');
+    }
+
+    match /watch_history/{docId} {
+      allow read, delete: if signedIn() && ownsId(docId) && resource.data.userId == request.auth.uid;
+      allow create, update: if signedIn() && ownsId(docId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(
+             ['userId', 'fileUrl', 'title', 'poster', 'progressSeconds', 'durationSeconds', 'watchedAt'])
+        && request.resource.data.fileUrl is string && request.resource.data.fileUrl.size() < 2048
+        && request.resource.data.title is string && request.resource.data.title.size() < 500;
+    }
+
+    match /bookmarks/{docId} {
+      allow read, delete: if signedIn() && ownsId(docId) && resource.data.userId == request.auth.uid;
+      allow create, update: if signedIn() && ownsId(docId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.keys().hasOnly(['userId', 'fileUrl', 'title', 'poster', 'savedAt'])
+        && request.resource.data.fileUrl is string && request.resource.data.fileUrl.size() < 2048
+        && request.resource.data.title is string && request.resource.data.title.size() < 500;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

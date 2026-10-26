@@ -30,9 +30,9 @@ const firebaseConfig = {
 
 // Sync/history/watchlist are optional — an unconfigured or invalid Firebase
 // project must not crash the app for everyone else on load.
-let app = null, db = null, auth = null;
+let db = null, auth = null;
 try {
-  app  = initializeApp(firebaseConfig);
+  const app = initializeApp(firebaseConfig);
   db   = getFirestore(app);
   auth = getAuth(app);
 } catch (err) {
@@ -146,5 +146,7 @@ export async function isBookmarked(fileUrl) {
   const snap = await getDoc(doc(db, 'bookmarks', `${user.uid}_${id}`));
   return snap.exists();
 }
+
+export const firebaseReady = Boolean(db && auth);
 
 export { db, auth };

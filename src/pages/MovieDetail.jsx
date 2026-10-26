@@ -20,6 +20,7 @@ import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
 import { addBookmark, removeBookmark, isBookmarked } from '../lib/firebase';
 import { useAsync } from '../lib/useAsync';
+import { getItem } from '../lib/storage.js';
 
 export default function MovieDetail() {
   const { id } = useParams();
@@ -394,7 +395,7 @@ function WatchlistButton({ fileUrl, title, poster }) {
 
 /** Locate a title on the server, distinguishing "missing" from "no file inside". */
 async function searchServer(detail, mediaType) {
-  if (!localStorage.getItem('isp_url')) return { status: 'no-server', hit: null };
+  if (!getItem('isp_url')) return { status: 'no-server', hit: null };
 
   try {
     const hit = await findOnServer(detail.title, {

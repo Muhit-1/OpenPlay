@@ -23,7 +23,7 @@ export default defineConfig([
 
   // Serverless functions and the local dev server run on Node.
   {
-    files: ['api/**/*.js', 'dev-server.js', '*.config.js'],
+    files: ['api/**/*.js', 'shared/**/*.js', 'test/**/*.js', 'server.js', '*.config.js'],
     extends: [js.configs.recommended],
     languageOptions: {
       globals: { ...globals.node },

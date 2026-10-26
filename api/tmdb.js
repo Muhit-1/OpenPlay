@@ -11,6 +11,9 @@
 //   ?query=…                                multi-search: films, series, people
 //   ?companyId=…                            a studio's catalogue
 
+import { titleScore } from '../shared/title.js';
+import { preflight } from './_lib/http.js';
+
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMG       = 'https://image.tmdb.org/t/p';
 const TIMEOUT   = 8000;
@@ -38,33 +41,7 @@ async function tmdb(path, params = {}) {
 }
 
 // ── Title matching ────────────────────────────────────────────────────────
-// Mirrors src/lib/release.js. Serverless functions are bundled separately from
-// the client, so the two cannot share a module — keep these in sync.
-
-function normaliseTitle(str) {
-  return String(str || '')
-    .toLowerCase()
-    .replace(/['‘’`]/g, '')
-    .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9]+/g, ' ')
-    .replace(/^(the|a|an)\s+/, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function titleScore(candidate, wanted) {
-  const a = normaliseTitle(candidate);
-  const b = normaliseTitle(wanted);
-  if (!a || !b) return 0;
-  if (a === b) return 1;
-  if (a.startsWith(b + ' ') || b.startsWith(a + ' ')) return 0.72;
-
-  const aWords = a.split(' ');
-  const bWords = new Set(b.split(' '));
-  const hits   = aWords.filter(w => bWords.has(w)).length;
-  const recall = hits / Math.max(aWords.length, bWords.size);
-  return recall >= 0.8 ? 0.65 * recall : recall * 0.5;
-}
+// Shared with the browser bundle (see shared/title.js).
 
 /**
  * Rank search results instead of blindly taking the first one.
@@ -154,10 +131,7 @@ function shapeListItem(item, fallbackType) {
 // ── Handler ───────────────────────────────────────────────────────────────
 
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin',  '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') return res.status(200).end();
+  if (preflight(req, res)) return;
 
   if (!process.env.TMDB_API_KEY) {
     return res.status(500).json({ error: 'TMDB_API_KEY not configured' });
@@ -170,6 +144,13 @@ export default async function handler(req, res) {
     query, companyId,
     page = '1', sortBy = 'popularity.desc',
   } = req.query;
+
+  // Ids end up inside TMDB URL paths, so anything but digits is refused.
+  for (const [name, value] of Object.entries({ showId, season, tmdbId, genre, personId, companyId })) {
+    if (value !== undefined && !/^\d+(,\d+)*$/.test(String(value))) {
+      return res.status(400).json({ error: `Invalid ${name}` });
+    }
+  }
 
   // Lists change slowly; detail lookups are effectively immutable.
   res.setHeader('Cache-Control', 'public, s-maxage=3600, stale-while-revalidate=86400');
@@ -260,8 +241,9 @@ export default async function handler(req, res) {
 
     // ── Trending ──
     if (trending) {
-      const mt = mediaType === 'all' ? 'all' : mediaType;
-      const data = await tmdb(`/trending/${mt}/${timeWindow}`, { language: lang, page });
+      const mt = ['all', 'movie', 'tv', 'person'].includes(mediaType) ? mediaType : 'all';
+      const window = timeWindow === 'day' ? 'day' : 'week';
+      const data = await tmdb(`/trending/${mt}/${window}`, { language: lang, page });
       return res.status(200).json((data.results || []).map(i => shapeListItem(i, mt)));
     }
 
