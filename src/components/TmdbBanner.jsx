@@ -37,7 +37,7 @@ export default function TmdbBanner() {
     const { reachable, health } = await pingApi();
     setChecking(false);
 
-    if (!reachable) setProblem(usesHelper() ? 'no-helper' : null);   // no API at all is reported elsewhere
+    if (!reachable) setProblem(usesHelper() ? 'no-helper' : 'no-api');
     else setProblem(health.ok ? null : health.reason);
   }, []);
 
@@ -64,6 +64,27 @@ export default function TmdbBanner() {
           open (looking for it at <span className="mono">{apiBase()}</span>). If your browser asks to
           allow access to devices on your network, choose Allow.{' '}
           <Link to="/settings" className="underline">Helper settings</Link>
+        </Notice>
+      </div>
+    );
+  }
+
+  if (problem === 'no-api') {
+    return (
+      <div className="px-5 sm:px-7 pt-4">
+        <Notice
+          tone="error"
+          title="OpenPlay's API is not running"
+          action={
+            <button onClick={check} disabled={checking} className="control px-3.5 h-9 text-sm flex-shrink-0">
+              {checking ? 'Checking' : 'Try again'}
+            </button>
+          }
+        >
+          Libraries, posters and playback all need it. In the OpenPlay folder run{' '}
+          <span className="mono">npm run dev:all</span> (development) or{' '}
+          <span className="mono">npm start</span> (after <span className="mono">npm run build</span>),
+          then reload this page.
         </Notice>
       </div>
     );

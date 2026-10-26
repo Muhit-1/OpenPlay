@@ -75,6 +75,24 @@ export async function pingApi(base = apiBase()) {
     const health = await res.json();
     return { reachable: true, health };
   } catch (error) {
+    // A dev server answering 502 with no JSON means "nothing is behind me".
     return { reachable: false, health: null, error };
   }
+}
+
+/**
+ * A failed API response, in words. OpenPlay's own API always explains itself in
+ * JSON; a bare 502/503/504 with no explanation comes from whatever sits in
+ * front of it (the Vite dev proxy, a reverse proxy) and means the API process
+ * is not running or not reachable.
+ */
+export function describeApiFailure(status, body) {
+  if (body?.detail) return body.detail;
+  if (body?.error) return body.error;
+  if (status === 502 || status === 503 || status === 504) {
+    return usesHelper()
+      ? 'The OpenPlay helper is not reachable. Start it with npm run helper.'
+      : "OpenPlay's own API is not running. Start everything with npm run dev:all (or npm start) and reload.";
+  }
+  return `Server returned HTTP ${status}.`;
 }

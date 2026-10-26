@@ -13,7 +13,9 @@ export default defineConfig({
     // OR you can use `vercel dev` which handles this automatically.
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        // 127.0.0.1, not localhost: on Windows localhost can resolve to IPv6 first,
+        // and the API listens on IPv4 — the proxy then answers 502.
+        target: 'http://127.0.0.1:3001',
         changeOrigin: true,
       },
     },

@@ -14,7 +14,7 @@
 // rather than making them paste in six.
 
 import { safeDecode } from './text.js';
-import { apiUrl } from './api.js';
+import { apiUrl, describeApiFailure } from './api.js';
 
 /** Labels that are not watchable media, and are dropped from the results. */
 const NOT_MEDIA = /\b(game|games|software|tutorial|training|islamic|app|apps|driver|ebook|book)\b/i;
@@ -134,7 +134,7 @@ export async function discoverLibraries(entryUrl) {
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      return { libraries: [], error: body.detail || `Server returned HTTP ${res.status}.` };
+      return { libraries: [], error: describeApiFailure(res.status, body) };
     }
 
     const html = await res.text();

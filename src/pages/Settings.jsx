@@ -13,6 +13,7 @@ import { getLibraries, saveLibraries } from '../lib/server';
 import { downloadVlcRegistryFile, isVlcReady } from '../lib/vlc';
 import { Notice } from '../components/ui';
 import { getItem, removeItem, setItem } from '../lib/storage.js';
+import { normalizeServerAddress } from '../lib/url';
 import { apiBase, setApiBase, usesHelper, pingApi, DEFAULT_HELPER } from '../lib/api';
 
 const CATEGORY_ICON = {
@@ -46,13 +47,23 @@ export default function Settings() {
     if (previous && previous !== lang) clearMetaCache();
   }, [lang]);
 
+  const addressCheck = normalizeServerAddress(portal);
+
   const discover = useCallback(async () => {
     setScanning(true);
     setScan(null);
     setSaved(false);
 
+    const address = normalizeServerAddress(portal);
+    if (!address.ok) {
+      setScan({ ok: false, text: address.error });
+      setScanning(false);
+      return;
+    }
+    setPortal(address.url);          // show what was actually understood
+
     const started = performance.now();
-    const result = await discoverLibraries(portal);
+    const result = await discoverLibraries(address.url);
     const ms = Math.round(performance.now() - started);
 
     if (result.error) {
@@ -71,7 +82,9 @@ export default function Settings() {
   }, [portal]);
 
   const save = () => {
-    const url = withTrailingSlash(portal.trim());
+    const address = normalizeServerAddress(portal);
+    if (!address.ok) { setScan({ ok: false, text: address.error }); return; }
+    const url = address.url;
     setItem('portal_url', url);
     setItem('isp_url', url);
     saveLibraries(libraries);
@@ -109,23 +122,37 @@ export default function Settings() {
       >
         <div className="flex gap-2">
           <input
-            type="url"
+            type="text"
+            inputMode="url"
+            autoComplete="off"
             value={portal}
             onChange={e => { setPortal(e.target.value); setScan(null); setSaved(false); }}
-            onKeyDown={e => e.key === 'Enter' && discover()}
-            placeholder="http://172.16.50.12/"
+            onKeyDown={e => e.key === 'Enter' && addressCheck.ok && discover()}
+            placeholder="172.16.50.12  or  http://172.16.50.12/"
             spellCheck={false}
+            aria-label="ISP portal address"
+            aria-invalid={portal.trim() !== '' && !addressCheck.ok}
             className="control flex-1 px-3.5 h-11 mono text-[15px] outline-none"
           />
           <button
             onClick={discover}
-            disabled={!portal.trim() || scanning}
+            disabled={!addressCheck.ok || scanning}
             className="control flex items-center gap-2 px-4 h-11 text-[15px] font-medium disabled:opacity-40"
           >
             {scanning ? <Loader2 size={15} className="animate-spin" /> : <Radar size={15} />}
             {scanning ? 'Scanning' : 'Find libraries'}
           </button>
         </div>
+
+        {portal.trim() !== '' && !scan && (
+          <p
+            className="mt-2 text-[14px]"
+            role={addressCheck.ok ? 'status' : 'alert'}
+            style={{ color: addressCheck.ok ? 'var(--text-dim)' : 'var(--error)' }}
+          >
+            {addressCheck.ok ? <>Will connect to <span className="mono">{addressCheck.url}</span></> : addressCheck.error}
+          </p>
+        )}
 
         {scan && (
           <p
@@ -413,10 +440,6 @@ function Choice({ active, onClick, children }) {
   );
 }
 
-function withTrailingSlash(url) {
-  return url.endsWith('/') ? url : url + '/';
-}
-
 /** The address of the local helper, for when OpenPlay is used from a hosted page. */
 function HelperSection() {
   const [value, setValue] = useState(() => apiBase());
@@ -426,7 +449,9 @@ function HelperSection() {
   const test = async () => {
     setTesting(true);
     setResult(null);
-    const { reachable, health } = await pingApi(value.trim() || apiBase());
+    const address = value.trim() ? normalizeServerAddress(value) : { ok: true, url: apiBase() };
+    if (!address.ok) { setTesting(false); setResult({ ok: false, text: address.error }); return; }
+    const { reachable, health } = await pingApi(address.url);
     setTesting(false);
     setResult(
       !reachable ? { ok: false, text: 'No helper answered at that address.' }
@@ -436,7 +461,14 @@ function HelperSection() {
   };
 
   const save = () => {
-    setApiBase(value);
+    if (value.trim()) {
+      const address = normalizeServerAddress(value);
+      if (!address.ok) { setResult({ ok: false, text: address.error }); return; }
+      setApiBase(address.url);
+      setValue(address.url.replace(/\/$/, ''));
+    } else {
+      setApiBase('');
+    }
     clearMetaCache();
     setResult({ ok: true, text: 'Saved.' });
   };
@@ -450,7 +482,8 @@ function HelperSection() {
     >
       <div className="flex gap-2 flex-wrap">
         <input
-          type="url"
+          type="text"
+          inputMode="url"
           value={value}
           onChange={e => { setValue(e.target.value); setResult(null); }}
           placeholder={DEFAULT_HELPER}
