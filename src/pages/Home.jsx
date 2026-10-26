@@ -304,7 +304,7 @@ function FirstRun({ navigate }) {
   return (
     <div className="page-enter min-h-[70vh] flex items-center justify-center px-6">
       <div className="max-w-md text-center">
-        <img src="/logo.png" alt="" width={72} height={72} className="mx-auto mb-6" />
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" width={72} height={72} className="mx-auto mb-6" />
 
         <h1 className="font-display text-3xl mb-3">Connect your server</h1>
         <p className="text-[15px] leading-relaxed mb-8" style={{ color: 'var(--text-soft)' }}>

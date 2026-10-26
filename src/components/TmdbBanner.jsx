@@ -4,8 +4,10 @@
 // working the cards just show folder icons, which looks like a bug in the app.
 // This says what is actually wrong.
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Notice } from './ui';
+import { pingApi, usesHelper, apiBase } from '../lib/api';
 
 const MESSAGES = {
   'no-key': [
@@ -27,16 +29,45 @@ const MESSAGES = {
 };
 
 export default function TmdbBanner() {
-  const [problem, setProblem] = useState(null);
+  const [problem, setProblem] = useState(null);   // a TMDB reason, or 'no-helper'
+  const [checking, setChecking] = useState(false);
+
+  const check = useCallback(async () => {
+    setChecking(true);
+    const { reachable, health } = await pingApi();
+    setChecking(false);
+
+    if (!reachable) setProblem(usesHelper() ? 'no-helper' : null);   // no API at all is reported elsewhere
+    else setProblem(health.ok ? null : health.reason);
+  }, []);
 
   useEffect(() => {
-    let live = true;
-    fetch('/api/health', { signal: AbortSignal.timeout(10000) })
-      .then(r => r.json())
-      .then(h => { if (live && !h.ok) setProblem(h.reason); })
-      .catch(() => {});   // no API at all is reported elsewhere
-    return () => { live = false; };
-  }, []);
+    // Deferred so the state updates inside check() are not synchronous in the effect.
+    const t = setTimeout(check, 0);
+    return () => clearTimeout(t);
+  }, [check]);
+
+  if (problem === 'no-helper') {
+    return (
+      <div className="px-5 sm:px-7 pt-4">
+        <Notice
+          tone="warn"
+          title="The OpenPlay helper is not running"
+          action={
+            <button onClick={check} disabled={checking} className="control px-3.5 h-9 text-sm flex-shrink-0">
+              {checking ? 'Checking' : 'Try again'}
+            </button>
+          }
+        >
+          This page needs a small helper on your own computer, because only it can reach your ISP
+          server. In the OpenPlay folder run <span className="mono">npm run helper</span> and leave it
+          open (looking for it at <span className="mono">{apiBase()}</span>). If your browser asks to
+          allow access to devices on your network, choose Allow.{' '}
+          <Link to="/settings" className="underline">Helper settings</Link>
+        </Notice>
+      </div>
+    );
+  }
 
   const message = problem && MESSAGES[problem];
   if (!message) return null;

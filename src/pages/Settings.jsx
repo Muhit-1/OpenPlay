@@ -13,6 +13,7 @@ import { getLibraries, saveLibraries } from '../lib/server';
 import { downloadVlcRegistryFile, isVlcReady } from '../lib/vlc';
 import { Notice } from '../components/ui';
 import { getItem, removeItem, setItem } from '../lib/storage.js';
+import { apiBase, setApiBase, usesHelper, pingApi, DEFAULT_HELPER } from '../lib/api';
 
 const CATEGORY_ICON = {
   movies: Clapperboard,
@@ -141,7 +142,7 @@ export default function Settings() {
           </p>
         )}
 
-        {window.location.protocol === 'https:' && /^http:\/\//i.test(portal.trim()) && (
+        {window.location.protocol === 'https:' && !usesHelper() && /^http:\/\//i.test(portal.trim()) && (
           <div className="mt-2.5">
             <Notice tone="warn" title="This page is HTTPS, your server is HTTP">
               Browsers refuse to play http:// video on an https:// page, and a cloud-hosted
@@ -227,6 +228,8 @@ export default function Settings() {
       </Section>
 
       <VlcSection />
+
+      <HelperSection />
 
       <Section title="Accent">
         <div className="flex flex-wrap gap-2.5">
@@ -412,4 +415,59 @@ function Choice({ active, onClick, children }) {
 
 function withTrailingSlash(url) {
   return url.endsWith('/') ? url : url + '/';
+}
+
+/** The address of the local helper, for when OpenPlay is used from a hosted page. */
+function HelperSection() {
+  const [value, setValue] = useState(() => apiBase());
+  const [result, setResult] = useState(null);
+  const [testing, setTesting] = useState(false);
+
+  const test = async () => {
+    setTesting(true);
+    setResult(null);
+    const { reachable, health } = await pingApi(value.trim() || apiBase());
+    setTesting(false);
+    setResult(
+      !reachable ? { ok: false, text: 'No helper answered at that address.' }
+        : health.ok ? { ok: true, text: 'Helper is running and TMDB works.' }
+        : { ok: false, text: `Helper is running, but TMDB: ${health.reason}.` }
+    );
+  };
+
+  const save = () => {
+    setApiBase(value);
+    clearMetaCache();
+    setResult({ ok: true, text: 'Saved.' });
+  };
+
+  return (
+    <Section
+      title="Helper"
+      hint={usesHelper()
+        ? 'Where the OpenPlay helper is running. Start it with npm run helper.'
+        : 'Only needed when you open OpenPlay from a hosted page. Leave empty when you run it yourself with npm start.'}
+    >
+      <div className="flex gap-2 flex-wrap">
+        <input
+          type="url"
+          value={value}
+          onChange={e => { setValue(e.target.value); setResult(null); }}
+          placeholder={DEFAULT_HELPER}
+          spellCheck={false}
+          aria-label="Helper address"
+          className="control flex-1 min-w-[220px] px-3.5 h-11 mono text-[15px] outline-none"
+        />
+        <button onClick={test} disabled={testing} className="control px-4 h-11 text-[15px] font-medium disabled:opacity-40">
+          {testing ? 'Testing' : 'Test'}
+        </button>
+        <button onClick={save} className="btn-accent px-4 h-11 rounded-[10px] text-[15px]">Save</button>
+      </div>
+      {result && (
+        <p className="mt-3 text-[15px]" role="status" style={{ color: result.ok ? 'var(--ok)' : 'var(--error)' }}>
+          {result.text}
+        </p>
+      )}
+    </Section>
+  );
 }

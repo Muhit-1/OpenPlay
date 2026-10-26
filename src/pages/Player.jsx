@@ -21,6 +21,7 @@ import { fetchMeta } from '../lib/tmdb';
 import { loadEpisodes, orderEpisodes, nextEpisode } from '../lib/episodes';
 import { parseRelease } from '../lib/release';
 import { libraryKindFor } from '../lib/server';
+import { apiUrl, mediaSrc } from '../lib/api';
 import { saveProgress, getProgress } from '../lib/firebase';
 import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
@@ -116,7 +117,7 @@ export default function Player() {
           label: subtitleLabel(f.name),
           language: subtitleLang(f.name),
           // SRT has to be converted to WebVTT; the proxy does that.
-          src: /\.srt$/i.test(f.url) ? `/api/proxy?url=${encodeURIComponent(f.url)}` : f.url,
+          src: /\.srt$/i.test(f.url) ? apiUrl(`/api/proxy?url=${encodeURIComponent(f.url)}`) : mediaSrc(f.url),
         }))
       );
     }).catch(() => {});
@@ -141,7 +142,7 @@ export default function Player() {
     const v = videoRef.current;
     if (!v) return;
 
-    v.src = fileUrl;
+    v.src = mediaSrc(fileUrl);
     v.load();
 
     const onPlay = () => setPlaying(true);

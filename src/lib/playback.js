@@ -13,6 +13,7 @@
 
 import { parseRelease } from './release.js';
 import { basename } from './text.js';
+import { mediaSrc } from './api.js';
 
 // ── Codec strings for canPlayType ─────────────────────────────────────────
 
@@ -136,7 +137,7 @@ export function probeUrl(url, { timeoutMs = 12000 } = {}) {
       finish(false, code === 4 ? 'unsupported' : code === 2 ? 'network' : 'decode-error');
     }, { once: true });
 
-    video.src = url;
+    video.src = mediaSrc(url);
     video.load();
   });
 }

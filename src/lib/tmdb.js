@@ -3,6 +3,7 @@
 
 import { parseRelease } from './release.js';
 import { listDir, clearDirCache } from './server.js';
+import { apiUrl } from './api.js';
 import { getItem } from './storage.js';
 
 export { parseRelease };
@@ -29,7 +30,7 @@ function getLang() {
 }
 
 async function getJSON(path) {
-  const res = await fetch(path, { signal: AbortSignal.timeout(15000) });
+  const res = await fetch(apiUrl(path), { signal: AbortSignal.timeout(15000) });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

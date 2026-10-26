@@ -56,7 +56,7 @@ export function Rail({ open, onClose }) {
         <div className="flex items-center justify-between px-5 h-16 flex-shrink-0">
           <Link to="/" className="flex items-center gap-2.5">
             <img
-              src="/logo.png"
+              src={`${import.meta.env.BASE_URL}logo.png`}
               alt=""
               width={28}
               height={28}

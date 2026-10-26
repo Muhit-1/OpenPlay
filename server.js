@@ -4,6 +4,8 @@
 //
 //   node server.js           API only, for `npm run dev:all` (Vite serves the UI)
 //   node server.js --prod    API + the built UI from ./dist, for a LAN install
+//   node server.js --helper  API + video streaming on loopback only, for the
+//                            hosted page (GitHub Pages) to talk to
 //
 // This is the intended way to run OpenPlay: on a machine that can reach your
 // ISP's servers. The same API handlers also run as Vercel functions, but a
@@ -51,17 +53,19 @@ export async function createApp({ serveUi = false } = {}) {
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
 
-  const [proxy, parse, tmdb, health] = await Promise.all([
+  const [proxy, parse, tmdb, health, stream] = await Promise.all([
     import('./api/proxy.js'),
     import('./api/parse.js'),
     import('./api/tmdb.js'),
     import('./api/health.js'),
+    import('./api/stream.js'),
   ]);
 
   app.all('/api/proxy', adapt(proxy));
   app.all('/api/parse', adapt(parse));
   app.all('/api/tmdb',  adapt(tmdb));
   app.all('/api/health', adapt(health));
+  app.all('/api/stream', adapt(stream));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
   if (serveUi) {
@@ -86,21 +90,37 @@ export async function createApp({ serveUi = false } = {}) {
   return app;
 }
 
+/** Where the hosted page lives; the helper accepts calls from it by default. */
+export const DEFAULT_PAGES_ORIGIN = 'https://muhit-1.github.io';
+
 // Run only when executed directly, so tests can import createApp.
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
   loadEnv();
-  const prod = process.argv.includes('--prod');
-  const port = Number(process.env.PORT) || (prod ? 8080 : 3001);
-  // Dev stays on loopback; a LAN install must be reachable by other devices.
+  const prod   = process.argv.includes('--prod');
+  const helper = process.argv.includes('--helper');
+
+  if (helper) {
+    process.env.OPENPLAY_STREAM = '1';
+    // Only the hosted page (and local dev) may use a helper running on this PC.
+    process.env.ALLOWED_ORIGINS ||= `${DEFAULT_PAGES_ORIGIN},http://localhost:5173`;
+  }
+
+  const port = Number(process.env.PORT) || (prod || helper ? 8080 : 3001);
+  // Dev and the helper stay on loopback; a LAN install must be reachable by other devices.
   const host = process.env.HOST || (prod ? '0.0.0.0' : '127.0.0.1');
 
   const app = await createApp({ serveUi: prod });
   app.listen(port, host, () => {
     // 0.0.0.0 means "all interfaces" — it is not an address a browser can open.
     const shown = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
-    console.log(`\n OpenPlay ${prod ? 'server' : 'API'} is running.`);
-    console.log(` Open  http://${shown}:${port}`);
-    if (host === '0.0.0.0') console.log(' Other devices on your network can use this machine\'s LAN address with the same port.');
+    console.log(`\n OpenPlay ${helper ? 'helper' : prod ? 'server' : 'API'} is running.`);
+    if (helper) {
+      console.log(` Keep this window open, then use OpenPlay at ${DEFAULT_PAGES_ORIGIN}/OpenPlay/`);
+      console.log(` Helper address: http://${shown}:${port}   (allowed sites: ${process.env.ALLOWED_ORIGINS})`);
+    } else {
+      console.log(` Open  http://${shown}:${port}`);
+      if (host === '0.0.0.0') console.log(' Other devices on your network can use this machine\'s LAN address with the same port.');
+    }
     console.log();
   });
 }

@@ -9,6 +9,7 @@
     "dev:all": "concurrently \"npm run dev:api\" \"npm run dev\"",
     "build": "vite build",
     "start": "node server.js --prod",
+    "helper": "node server.js --helper",
     "lint": "eslint .",
     "test": "node --test \"test/**/*.test.js\"",
     "check": "npm run lint && npm test && npm run build",

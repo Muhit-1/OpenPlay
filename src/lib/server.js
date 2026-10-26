@@ -16,6 +16,7 @@
 
 import { titleScore, parseRelease } from './release.js';
 import { safeDecode } from './text.js';
+import { apiUrl } from './api.js';
 import { getItem, setItem } from './storage.js';
 
 const MATCH_THRESHOLD = 0.72;   // below this, treat it as "not on server"
@@ -112,7 +113,7 @@ export function listDir(url) {
 
   // Errors are returned, not thrown: a dead branch must not abort a whole
   // search. Callers that need to tell "empty" from "unreachable" read `error`.
-  const promise = fetch(`/api/parse?url=${encodeURIComponent(url)}`, {
+  const promise = fetch(apiUrl(`/api/parse?url=${encodeURIComponent(url)}`), {
     signal: AbortSignal.timeout(15000),
   })
     .then(async res => {

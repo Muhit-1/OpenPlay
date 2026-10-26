@@ -14,6 +14,7 @@
 // rather than making them paste in six.
 
 import { safeDecode } from './text.js';
+import { apiUrl } from './api.js';
 
 /** Labels that are not watchable media, and are dropped from the results. */
 const NOT_MEDIA = /\b(game|games|software|tutorial|training|islamic|app|apps|driver|ebook|book)\b/i;
@@ -127,7 +128,7 @@ export async function discoverLibraries(entryUrl) {
   if (!url) return { libraries: [], error: 'Enter an address first.' };
 
   try {
-    const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`, {
+    const res = await fetch(apiUrl(`/api/proxy?url=${encodeURIComponent(url)}`), {
       signal: AbortSignal.timeout(20000),
     });
 
@@ -181,7 +182,7 @@ async function checkReachability(libraries, timeoutMs = 6000) {
     hosts.map(async host => {
       const sample = libraries.find(l => l.host === host);
       try {
-        const res = await fetch(`/api/parse?url=${encodeURIComponent(sample.url)}`, {
+        const res = await fetch(apiUrl(`/api/parse?url=${encodeURIComponent(sample.url)}`), {
           signal: AbortSignal.timeout(timeoutMs),
         });
         return [host, res.ok];

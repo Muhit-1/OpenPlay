@@ -26,7 +26,7 @@ export default class ErrorBoundary extends Component {
         action={
           <div className="flex gap-3">
             <button className="btn-accent" onClick={() => window.location.reload()}>Reload</button>
-            <a className="btn-accent" href="/">Home</a>
+            <a className="btn-accent" href={import.meta.env.BASE_URL}>Home</a>
           </div>
         }
       />

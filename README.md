@@ -172,7 +172,8 @@ cp .env.example .env
 | `VITE_FIREBASE_AUTH_DOMAIN` | |
 | `VITE_FIREBASE_PROJECT_ID` | |
 | `ALLOWED_PROXY_HOSTS` | Comma-separated hosts `/api/proxy` may reach. Optional on a LAN install; **required** on Vercel, where the proxy refuses everything until it is set. |
-| `ALLOWED_ORIGINS` | Optional origins allowed to call the API cross-origin. Default: none. |
+| `ALLOWED_ORIGINS` | Origins allowed to call the API from another site. Default: none; `npm run helper` allows the GitHub Pages site. |
+| `OPENPLAY_STREAM` | `1` enables `/api/stream` (video pass-through). Set automatically by `npm run helper`. |
 | `RATE_LIMIT_PER_MIN` | Optional per-client request cap. Default: none on a LAN install, 600 on Vercel. |
 | `PORT` / `HOST` | Optional, for `npm start` (default `0.0.0.0:8080`). |
 
@@ -220,6 +221,33 @@ data:
 ```bash
 npx firebase-tools deploy --only firestore:rules,firestore:indexes
 ```
+
+### Hosted page + local helper (GitHub Pages)
+
+A website on the internet cannot see your ISP's private addresses, and an
+`https://` page cannot play `http://` video. So the hosted page is only the
+interface; a small **helper** on your own computer does the reaching.
+
+1. On any computer that can reach your ISP server (Node.js 20+):
+   ```bash
+   git clone https://github.com/Muhit-1/OpenPlay.git && cd OpenPlay
+   npm install
+   cp .env.example .env      # set TMDB_API_KEY
+   npm run helper            # leave this window open
+   ```
+2. Open the hosted page (`https://<your-user>.github.io/OpenPlay/`).
+3. Chrome / Edge will ask whether the site may access devices on your network.
+   Choose **Allow** — that is the page talking to your helper.
+4. Settings → Server, enter your portal address as usual.
+
+The helper listens on `localhost` only, answers only the hosted page (see
+`ALLOWED_ORIGINS`), and streams video through itself so the browser can play it.
+Firefox and Safari may refuse an https page talking to `localhost`; use
+Chrome or Edge. If the helper is not running the page says so and tells you how
+to start it.
+
+Publishing: the **Deploy to GitHub Pages** workflow builds the site on every push
+to `main` (Settings → Pages → Source must be **GitHub Actions**).
 
 ### Hosting on Vercel
 
@@ -300,7 +328,7 @@ openplay/
 │       ├── text.js      # Safe URL decoding
 │       ├── useAsync.js  # Keyed async resource hook
 │       └── firebase.js  # Auth, watch history, bookmarks
-├── server.js            # Express: API (+ built UI with --prod)
+├── server.js            # Express: API (+ built UI with --prod, or --helper)
 ├── Dockerfile
 ├── firestore.rules      # Per-user access rules
 └── vercel.json
