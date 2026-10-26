@@ -9,15 +9,17 @@
 //   2. Subtitle tracks are properly added and removed. The old cleanup loop
 //      broke on its first iteration, so switching languages stacked tracks up.
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, Pause, Volume2, Volume1, VolumeX, Maximize, Minimize,
-  RotateCcw, RotateCw, Copy, Check, Download, Subtitles,
+  RotateCcw, RotateCw, Copy, Check, Download, Subtitles, SkipForward,
 } from 'lucide-react';
 import EpisodeList from '../components/EpisodeList';
 import { StatusChip, Rating, Notice } from '../components/ui';
-import { fetchMeta, fetchDirectory } from '../lib/tmdb';
+import { fetchMeta } from '../lib/tmdb';
+import { loadEpisodes, orderEpisodes, nextEpisode } from '../lib/episodes';
+import { parseRelease } from '../lib/release';
 import { saveProgress, getProgress } from '../lib/firebase';
 import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
@@ -81,6 +83,17 @@ export default function Player() {
     };
   }, [fileUrl, passedFile, meta]);
 
+  // ── Next episode ──
+  const ordered = useMemo(() => orderEpisodes(siblings), [siblings]);
+  const next = nextEpisode(ordered, fileUrl);
+
+  const advanceRef = useRef(() => {});
+  useEffect(() => {
+    advanceRef.current = () => {
+      if (next) navigate(`/watch/${encodeURIComponent(next.url)}`, { state: { file: next, meta } });
+    };
+  }, [next, meta, navigate]);
+
   // ── Metadata ──
   useEffect(() => {
     if (passedMeta) return;
@@ -90,25 +103,22 @@ export default function Player() {
     return () => { live = false; };
   }, [fileUrl, passedFile, passedMeta]);
 
-  // ── Siblings and external subtitles ──
+  // ── Episodes (every season of this show) and external subtitles ──
   useEffect(() => {
     let live = true;
-    const parent = fileUrl.slice(0, fileUrl.lastIndexOf('/') + 1);
 
-    fetchDirectory(parent).then(data => {
+    loadEpisodes(fileUrl).then(({ videos, subtitles: subs }) => {
       if (!live) return;
-      setSiblings(data.files.filter(f => f.type === 'video'));
+      setSiblings(videos);
       setSubtitles(
-        data.files
-          .filter(f => f.type === 'subtitle')
-          .map(f => ({
-            label: subtitleLabel(f.name),
-            language: subtitleLang(f.name),
-            // SRT has to be converted to WebVTT; the proxy does that.
-            src: /\.srt$/i.test(f.url) ? `/api/proxy?url=${encodeURIComponent(f.url)}` : f.url,
-          }))
+        subs.map(f => ({
+          label: subtitleLabel(f.name),
+          language: subtitleLang(f.name),
+          // SRT has to be converted to WebVTT; the proxy does that.
+          src: /\.srt$/i.test(f.url) ? `/api/proxy?url=${encodeURIComponent(f.url)}` : f.url,
+        }))
       );
-    });
+    }).catch(() => {});
 
     return () => { live = false; };
   }, [fileUrl]);
@@ -145,7 +155,11 @@ export default function Player() {
     const onDuration = () => setDuration(v.duration || 0);
     const onVolume = () => { setVolume(v.volume); setMuted(v.muted); };
     const onRate = () => setSpeed(v.playbackRate);
-    const onEnded = () => { setPlaying(false); saveRef.current(v.currentTime, v.duration); };
+    const onEnded = () => {
+      setPlaying(false);
+      saveRef.current(v.currentTime, v.duration);
+      advanceRef.current();   // roll straight into the next episode
+    };
 
     v.addEventListener('play', onPlay);
     v.addEventListener('pause', onPause);
@@ -291,8 +305,13 @@ export default function Player() {
   };
 
   const title = meta?.title
-    || describeMedia(passedFile?.name || fileUrl).title
+    || parseRelease(passedFile?.name || basename(fileUrl)).title
     || basename(fileUrl);
+
+  const parsedName = parseRelease(passedFile?.name || basename(fileUrl));
+  const episodeTag = parsedName.episode != null
+    ? `${parsedName.season ? `S${String(parsedName.season).padStart(2, '0')}` : ''}E${String(parsedName.episode).padStart(2, '0')}`
+    : null;
 
   const playedPct = duration ? (time / duration) * 100 : 0;
   const bufferedPct = duration ? (buffered / duration) * 100 : 0;
@@ -300,16 +319,38 @@ export default function Player() {
 
   return (
     <div className="page-enter px-5 sm:px-7 py-6">
-      <button
-        onClick={() => navigate(-1)}
-        className="flex items-center gap-2 mb-4 text-sm transition-colors"
-        style={{ color: 'var(--text-dim)' }}
-      >
-        <ArrowLeft size={15} aria-hidden="true" />
-        Back
-      </button>
+      <div className="flex items-center gap-4 mb-5">
+        <button
+          onClick={() => navigate(-1)}
+          className="control flex items-center gap-2 px-3 h-10 text-sm flex-shrink-0"
+          style={{ color: 'var(--text-soft)' }}
+        >
+          <ArrowLeft size={15} aria-hidden="true" />
+          Back
+        </button>
 
-      <div className="flex flex-col xl:flex-row gap-7">
+        <div className="min-w-0 flex-1">
+          <h1 className="font-display text-xl sm:text-2xl leading-tight truncate">{title}</h1>
+          {(episodeTag || meta?.year) && (
+            <p className="data mt-0.5 truncate">
+              {[episodeTag, meta?.year].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+
+        {next && (
+          <button
+            onClick={() => advanceRef.current()}
+            className="control flex items-center gap-2 px-3.5 h-10 text-sm flex-shrink-0"
+            style={{ color: 'var(--text-soft)' }}
+          >
+            <SkipForward size={15} aria-hidden="true" />
+            <span className="hidden sm:inline">Next episode</span>
+          </button>
+        )}
+      </div>
+
+      <div className="flex flex-col lg:flex-row gap-7">
         <div className="flex-1 min-w-0">
           {playback?.status === 'blocked' && (
             <div className="mb-3 flex flex-col gap-3">
@@ -569,7 +610,7 @@ export default function Player() {
               />
             )}
             <div className="min-w-0">
-              <h1 className="font-display text-2xl leading-tight mb-2">{title}</h1>
+              <h2 className="font-display text-2xl leading-tight mb-2">{title}</h2>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-2 data mb-3">
                 {meta?.year && <span>{meta.year}</span>}
                 {meta?.runtime && <span>{meta.runtime} min</span>}
@@ -602,9 +643,9 @@ export default function Player() {
         </div>
 
         {siblings.length > 1 && (
-          <aside className="xl:w-80 flex-shrink-0">
-            <h2 className="eyebrow mb-3">In this folder</h2>
-            <EpisodeList files={siblings} currentUrl={fileUrl} showMeta={meta} />
+          <aside className="lg:w-80 xl:w-96 flex-shrink-0 lg:sticky lg:top-4 lg:self-start">
+            <h2 className="eyebrow mb-3">{ordered.some(f => f.episode != null) ? 'Episodes' : 'In this folder'}</h2>
+            <EpisodeList files={ordered} currentUrl={fileUrl} showMeta={meta} />
           </aside>
         )}
       </div>

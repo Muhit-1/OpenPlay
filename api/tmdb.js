@@ -13,6 +13,7 @@
 
 import { titleScore } from '../shared/title.js';
 import { preflight } from './_lib/http.js';
+import { tmdbAuth } from './_lib/tmdb-auth.js';
 
 const TMDB_BASE = 'https://api.themoviedb.org/3';
 const IMG       = 'https://image.tmdb.org/t/p';
@@ -26,12 +27,13 @@ const round1   = n => (n ? Math.round(n * 10) / 10 : null);
 
 async function tmdb(path, params = {}) {
   const url = new URL(`${TMDB_BASE}${path}`);
-  url.searchParams.set('api_key', process.env.TMDB_API_KEY);
+  const auth = tmdbAuth(process.env.TMDB_API_KEY);
+  if (auth.apiKey) url.searchParams.set('api_key', auth.apiKey);
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined && v !== null && v !== '') url.searchParams.set(k, v);
   }
 
-  const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT) });
+  const res = await fetch(url, { headers: auth.headers, signal: AbortSignal.timeout(TIMEOUT) });
   if (!res.ok) {
     const err = new Error(`TMDB ${res.status}`);
     err.status = res.status;

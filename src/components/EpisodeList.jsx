@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Play } from 'lucide-react';
 import { fetchSeasonEpisodes } from '../lib/tmdb';
 import { parseRelease } from '../lib/release';
+import { orderEpisodes, sameUrl } from '../lib/episodes';
 import { useAsync } from '../lib/useAsync';
 
 export default function EpisodeList({ files = [], currentUrl, showMeta = null }) {
@@ -17,11 +18,21 @@ export default function EpisodeList({ files = [], currentUrl, showMeta = null })
     [seasons]
   );
 
+  // Open on the season that is playing now.
+  const currentSeason = seasonNumbers.find(n => seasons[n].some(f => sameUrl(f.url, currentUrl)));
+
   const [selected, setSelected] = useState(null);
+  const [seenSeason, setSeenSeason] = useState(currentSeason);
+  if (seenSeason !== currentSeason) {          // moved to another season: follow it
+    setSeenSeason(currentSeason);
+    setSelected(null);
+  }
 
   // Derived rather than stored, so a change of file list cannot leave the tab
   // pointing at a season that no longer exists.
-  const active = seasonNumbers.includes(selected) ? selected : (seasonNumbers[0] ?? 0);
+  const active = seasonNumbers.includes(selected)
+    ? selected
+    : (currentSeason ?? seasonNumbers[0] ?? 0);
 
   const { data: tmdbEpisodes } = useAsync(
     showMeta?.id && active !== 0 ? `${showMeta.id}|${active}` : null,
@@ -61,7 +72,7 @@ export default function EpisodeList({ files = [], currentUrl, showMeta = null })
 
       <ul className="overflow-y-auto no-scrollbar" style={{ maxHeight: '68vh' }}>
         {rows.map(file => {
-          const isCurrent = file.url === currentUrl;
+          const isCurrent = sameUrl(file.url, currentUrl);
           const episode = file.episode ? tmdbEpisodes[file.episode] : null;
 
           const label = episode?.name || cleanName(file.name);
@@ -72,7 +83,7 @@ export default function EpisodeList({ files = [], currentUrl, showMeta = null })
           return (
             <li key={file.url}>
               <button
-                onClick={() => navigate(`/watch/${encodeURIComponent(file.url)}`, { state: { file } })}
+                onClick={() => navigate(`/watch/${encodeURIComponent(file.url)}`, { state: { file, meta: showMeta } })}
                 className="w-full flex items-start gap-3 px-3 py-2.5 text-left transition-colors"
                 style={{
                   background: isCurrent ? 'var(--ink-850)' : 'transparent',
@@ -130,13 +141,8 @@ export default function EpisodeList({ files = [], currentUrl, showMeta = null })
 
 function groupBySeason(files) {
   const groups = {};
-  for (const file of files) {
-    const parsed = parseRelease(file.name);
-    const season = parsed.season ?? 0;
-    (groups[season] ||= []).push({ ...file, season: parsed.season, episode: parsed.episode });
-  }
-  for (const list of Object.values(groups)) {
-    list.sort((a, b) => (a.episode ?? 0) - (b.episode ?? 0) || a.name.localeCompare(b.name));
+  for (const file of orderEpisodes(files)) {
+    (groups[file.season ?? 0] ||= []).push(file);
   }
   return groups;
 }

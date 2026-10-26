@@ -5,6 +5,7 @@
 // network. This endpoint tells them apart.
 
 import { preflight } from './_lib/http.js';
+import { tmdbAuth } from './_lib/tmdb-auth.js';
 
 export default async function handler(req, res) {
   if (preflight(req, res)) return;
@@ -17,9 +18,10 @@ export default async function handler(req, res) {
 
   const started = Date.now();
   try {
-    const r = await fetch(`https://api.themoviedb.org/3/configuration?api_key=${encodeURIComponent(key)}`, {
-      signal: AbortSignal.timeout(6000),
-    });
+    const auth = tmdbAuth(key);
+    const url  = new URL('https://api.themoviedb.org/3/configuration');
+    if (auth.apiKey) url.searchParams.set('api_key', auth.apiKey);
+    const r = await fetch(url, { headers: auth.headers, signal: AbortSignal.timeout(6000) });
     if (r.status === 401) return res.status(200).json({ ok: false, reason: 'bad-key' });
     if (!r.ok) return res.status(200).json({ ok: false, reason: 'tmdb-error', status: r.status });
     return res.status(200).json({ ok: true, ms: Date.now() - started });
