@@ -94,6 +94,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] || '').href) {
 
   const app = await createApp({ serveUi: prod });
   app.listen(port, host, () => {
-    console.log(`\n OpenPlay ${prod ? 'server' : 'API'} listening on http://${host}:${port}\n`);
+    // 0.0.0.0 means "all interfaces" — it is not an address a browser can open.
+    const shown = host === '0.0.0.0' || host === '::' ? 'localhost' : host;
+    console.log(`\n OpenPlay ${prod ? 'server' : 'API'} is running.`);
+    console.log(` Open  http://${shown}:${port}`);
+    if (host === '0.0.0.0') console.log(' Other devices on your network can use this machine\'s LAN address with the same port.');
+    console.log();
   });
 }

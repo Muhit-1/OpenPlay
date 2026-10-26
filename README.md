@@ -145,7 +145,8 @@ Three small API handlers do all the server-side work:
 
 - Node.js 20 or newer
 - A free [TMDB API key](https://www.themoviedb.org/settings/api)
-- A Firebase project, if you want watch history and the watchlist
+- A Firebase project — optional. Without one, watch history and the watchlist are
+  kept in this browser's storage instead (per browser, not synced across devices)
 - Access to an ISP media server (OpenPlay does not provide one)
 
 ### Install
@@ -211,7 +212,8 @@ npm run check        # lint + tests + production build (also run by CI)
 
 ### Firebase (optional)
 
-Watch history and the watchlist use Firestore. Deploy the committed rules and
+Leave the `VITE_FIREBASE_*` variables empty and everything still works; history
+and the watchlist are stored in the browser. To sync across devices, use Firestore. Deploy the committed rules and
 indexes once, otherwise History stays empty and anyone could read other users'
 data:
 
