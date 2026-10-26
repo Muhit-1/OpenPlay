@@ -57,3 +57,14 @@ test('a local install is never rate limited', async () => {
   const results = await Promise.all(Array.from({ length: 700 }, () => get('/api/proxy')));
   assert.ok(results.every(r => r.status === 400));   // 400 = reached the handler, not 429
 });
+
+test('health says why metadata is unavailable', async () => {
+  const key = process.env.TMDB_API_KEY;
+  delete process.env.TMDB_API_KEY;
+  try {
+    const body = await (await get('/api/health')).json();
+    assert.deepEqual(body, { ok: false, reason: 'no-key' });
+  } finally {
+    process.env.TMDB_API_KEY = key;
+  }
+});

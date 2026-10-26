@@ -63,7 +63,11 @@ function ServerCard({ file, compact, onOpen }) {
 
   const open = () => {
     if (onOpen) return onOpen(file);
-    if (videoUrl) {
+    // Show the title's info page first (poster, cast, trailer); playing starts
+    // from there. Without a TMDB match, fall back to opening the file directly.
+    if (meta?.id) {
+      navigate(`/detail/${meta.id}?type=${meta.type === 'tv' ? 'tv' : 'movie'}`);
+    } else if (videoUrl) {
       navigate(`/watch/${encodeURIComponent(videoUrl)}`, {
         state: { file: { ...file, url: videoUrl }, meta },
       });
@@ -83,7 +87,7 @@ function ServerCard({ file, compact, onOpen }) {
       loading={loading}
       fallbackIcon={file.type === 'folder' && !videoUrl ? Folder : Film}
       overlayIcon={isPlayable ? Play : undefined}
-      overlayLabel={isPlayable ? 'Play' : 'Open'}
+      overlayLabel={meta?.id ? 'Details' : isPlayable ? 'Play' : 'Open'}
       topRight={<Rating value={meta?.rating} />}
       footer={
         <>

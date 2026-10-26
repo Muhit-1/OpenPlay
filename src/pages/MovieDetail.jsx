@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, Download, Copy, Check, FolderOpen, Loader2, SearchX,
-  Bookmark, BookmarkCheck, Building2,
+  Bookmark, BookmarkCheck, Building2, Clapperboard,
 } from 'lucide-react';
 import { StatusChip, Rating, Notice, EmptyState } from '../components/ui';
 import { fetchDetail } from '../lib/tmdb';
@@ -65,7 +65,7 @@ export default function MovieDetail() {
 
   const {
     title, overview, tagline, year, rating, runtime, seasons, episodes,
-    poster, backdrop, genres = [], cast = [], directors = [], writers = [], studios = [],
+    poster, backdrop, trailer, genres = [], cast = [], directors = [], writers = [], studios = [],
   } = detail;
 
   return (
@@ -141,6 +141,18 @@ export default function MovieDetail() {
               <p className="text-sm leading-relaxed max-w-2xl mb-7" style={{ color: 'var(--text-soft)' }}>
                 {overview}
               </p>
+            )}
+
+            {trailer?.key && (
+              <a
+                href={`https://www.youtube.com/watch?v=${encodeURIComponent(trailer.key)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="control inline-flex items-center gap-2 px-4 h-11 text-[15px] font-medium mb-5"
+              >
+                <Clapperboard size={16} aria-hidden="true" />
+                Watch trailer
+              </a>
             )}
 
             <ServerPanel

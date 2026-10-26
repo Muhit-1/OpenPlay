@@ -82,6 +82,16 @@ function rankResults(results, wantedTitle, wantedYear) {
 
 // ── Shapers ───────────────────────────────────────────────────────────────
 
+/** Best YouTube trailer TMDB lists, or null. */
+function pickTrailer(videos) {
+  const yt = (videos?.results || []).filter(v => v.site === 'YouTube' && v.key);
+  const best =
+    yt.find(v => v.type === 'Trailer' && v.official) ||
+    yt.find(v => v.type === 'Trailer') ||
+    yt.find(v => v.type === 'Teaser');
+  return best ? { key: best.key, name: best.name } : null;
+}
+
 function shapeDetail(detail, mediaType) {
   const credits = detail.credits || {};
   const crew    = credits.crew || [];
@@ -112,6 +122,7 @@ function shapeDetail(detail, mediaType) {
     directors:     crew.filter(c => c.job === 'Director').map(c => c.name),
     writers:       crew.filter(c => /^(Writer|Screenplay)$/.test(c.job)).map(c => c.name),
     cast,
+    trailer:       pickTrailer(detail.videos),
   };
 }
 
@@ -159,7 +170,7 @@ export default async function handler(req, res) {
     // ── Detail by id ──
     if (tmdbId) {
       const mt = mediaType === 'tv' ? 'tv' : 'movie';
-      const detail = await tmdb(`/${mt}/${tmdbId}`, { append_to_response: 'credits', language: lang });
+      const detail = await tmdb(`/${mt}/${tmdbId}`, { append_to_response: 'credits,videos', language: lang });
       return res.status(200).json(shapeDetail(detail, mt));
     }
 
@@ -285,7 +296,7 @@ export default async function handler(req, res) {
     if (ranked.length === 0) return res.status(200).json({ found: false, title });
 
     const best   = ranked[0];
-    const detail = await tmdb(`/${mt}/${best.item.id}`, { append_to_response: 'credits', language: lang });
+    const detail = await tmdb(`/${mt}/${best.item.id}`, { append_to_response: 'credits,videos', language: lang });
 
     return res.status(200).json({
       ...shapeDetail(detail, mt),

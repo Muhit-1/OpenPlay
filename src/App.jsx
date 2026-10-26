@@ -13,6 +13,7 @@ const Settings = lazy(() => import('./pages/Settings'));
 const MovieDetail = lazy(() => import('./pages/MovieDetail'));
 import { useTheme } from './lib/theme';
 import ErrorBoundary from './components/ErrorBoundary';
+import TmdbBanner from './components/TmdbBanner';
 import { Spinner } from './components/ui';
 
 export default function App() {
@@ -35,6 +36,7 @@ function Shell() {
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
         <main className="flex-1" id="main">
+          <TmdbBanner />
           <ErrorBoundary>
           <Suspense fallback={<div className="flex justify-center py-24"><Spinner /></div>}>
           <Routes>

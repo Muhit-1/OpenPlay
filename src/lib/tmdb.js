@@ -53,15 +53,14 @@ export async function fetchMeta(filename) {
 
   if (!title) return { found: false, title: filename };
 
+  // A failed request throws inside `cached` so it is not remembered as "no
+  // such title" for the rest of the session (a transient error used to blank
+  // every poster until reload).
   return cached(`meta|${title}|${year}|${kind}|${lang}`, async () => {
     const params = new URLSearchParams({ title, type: kind, lang });
     if (year) params.set('year', year);
-    try {
-      return await getJSON(`/api/tmdb?${params}`);
-    } catch {
-      return { found: false, title };
-    }
-  });
+    return getJSON(`/api/tmdb?${params}`);
+  }).catch(() => ({ found: false, title }));
 }
 
 /** TMDB detail by id. */

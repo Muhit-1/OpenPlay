@@ -51,15 +51,17 @@ export async function createApp({ serveUi = false } = {}) {
   app.disable('x-powered-by');
   app.set('trust proxy', 'loopback');
 
-  const [proxy, parse, tmdb] = await Promise.all([
+  const [proxy, parse, tmdb, health] = await Promise.all([
     import('./api/proxy.js'),
     import('./api/parse.js'),
     import('./api/tmdb.js'),
+    import('./api/health.js'),
   ]);
 
   app.all('/api/proxy', adapt(proxy));
   app.all('/api/parse', adapt(parse));
   app.all('/api/tmdb',  adapt(tmdb));
+  app.all('/api/health', adapt(health));
   app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
 
   if (serveUi) {

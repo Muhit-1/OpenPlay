@@ -211,7 +211,7 @@ function Chip({ active, small, muted, onClick, children }) {
     <button
       onClick={onClick}
       aria-pressed={active}
-      className={`flex-shrink-0 rounded-lg transition-colors ${small ? 'px-3 h-8 text-[13px]' : 'px-3.5 h-9 text-[14px]'}`}
+      className={`flex-shrink-0 rounded-[10px] transition-colors ${small ? 'px-4 h-10 text-[14px]' : 'px-5 h-11 text-[15px]'}`}
       style={{
         background: active ? 'var(--accent)' : 'var(--ink-800)',
         color: active ? 'var(--accent-ink)' : 'var(--text-soft)',
