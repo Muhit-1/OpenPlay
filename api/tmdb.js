@@ -15,7 +15,8 @@ import { titleScore } from '../shared/title.js';
 import { preflight } from './_lib/http.js';
 import { tmdbAuth } from './_lib/tmdb-auth.js';
 
-const TMDB_BASE = 'https://api.themoviedb.org/3';
+// TMDB_BASE_URL exists so tests and demos can point at a stand-in server.
+const TMDB_BASE = process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3';
 const IMG       = 'https://image.tmdb.org/t/p';
 const TIMEOUT   = 8000;
 

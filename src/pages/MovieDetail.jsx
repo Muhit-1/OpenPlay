@@ -20,6 +20,8 @@ import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
 import { addBookmark, removeBookmark, isBookmarked } from '../lib/firebase';
 import { useAsync } from '../lib/useAsync';
+import EpisodeList from '../components/EpisodeList';
+import { loadShowEpisodes, orderEpisodes, parentUrl } from '../lib/episodes';
 import { getItem } from '../lib/storage.js';
 
 export default function MovieDetail() {
@@ -46,6 +48,20 @@ export default function MovieDetail() {
     lookup?.hit?.videoUrl || null,
     () => inspectPlayback(lookup.hit.videoUrl)
   );
+
+  // A series is its folder of episodes, not one file: list them all so any
+  // episode can be played from here.
+  const showUrl = mediaType === 'tv' && lookup?.hit
+    ? (lookup.hit.folderUrl || parentUrl(lookup.hit.url))
+    : null;
+  const { data: showEpisodes, loading: episodesLoading } = useAsync(
+    showUrl,
+    () => loadShowEpisodes(showUrl),
+    []
+  );
+
+  // "Play" on a series starts at episode one, not at the biggest file.
+  const firstEpisode = showEpisodes?.length ? orderEpisodes(showEpisodes)[0] : null;
 
   if (loading) return <DetailSkeleton />;
   if (!detail?.found) {
@@ -156,6 +172,7 @@ export default function MovieDetail() {
             )}
 
             <ServerPanel
+              firstEpisode={firstEpisode}
               lookup={lookup}
               playback={playback}
               detail={detail}
@@ -188,6 +205,24 @@ export default function MovieDetail() {
             </dl>
           </div>
         </div>
+
+        {mediaType === 'tv' && showUrl && (
+          <section className="mt-12 max-w-3xl">
+            <h2 className="eyebrow mb-3">Episodes on your server</h2>
+            {episodesLoading ? (
+              <div className="control inline-flex items-center gap-2.5 px-4 h-11 text-sm" style={{ color: 'var(--text-dim)' }}>
+                <Loader2 size={15} className="animate-spin" aria-hidden="true" />
+                Reading episodes
+              </div>
+            ) : showEpisodes?.length > 0 ? (
+              <EpisodeList files={showEpisodes} currentUrl={null} showMeta={detail} />
+            ) : (
+              <p className="text-sm" style={{ color: 'var(--text-dim)' }}>
+                No playable episodes were found in this folder.
+              </p>
+            )}
+          </section>
+        )}
 
         {cast.length > 0 && (
           <section className="mt-14">
@@ -230,7 +265,7 @@ export default function MovieDetail() {
 
 /* ── The answer panel ────────────────────────────────────────────────────── */
 
-function ServerPanel({ lookup, playback, detail, navigate, mediaType }) {
+function ServerPanel({ lookup, playback, detail, navigate, mediaType, firstEpisode }) {
   const [copied, setCopied] = useState(false);
   const { status, hit } = lookup;
 
@@ -292,10 +327,12 @@ function ServerPanel({ lookup, playback, detail, navigate, mediaType }) {
     });
   };
 
-  const play = () =>
-    navigate(`/watch/${encodeURIComponent(hit.videoUrl)}`, {
-      state: { file: hit.file, meta: detail },
+  const play = () => {
+    const target = firstEpisode || hit.file;
+    navigate(`/watch/${encodeURIComponent(target?.url || hit.videoUrl)}`, {
+      state: { file: target, meta: detail },
     });
+  };
 
   const blocked = playback?.status === 'blocked';
 

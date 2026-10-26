@@ -15,6 +15,7 @@
 // the actual folder names.
 
 import { titleScore, parseRelease } from './release.js';
+import { safeDecode } from './text.js';
 import { getItem, setItem } from './storage.js';
 
 const MATCH_THRESHOLD = 0.72;   // below this, treat it as "not on server"
@@ -56,6 +57,19 @@ export const DEFAULT_LIBRARIES = [
  * Libraries discovered from the user's portal address, falling back to the
  * built-in DhakaFlix map when discovery has not been run.
  */
+/**
+ * 'tv' or 'movie' for a file or folder, from the library it lives in. A series
+ * folder is just "Show Name" — nothing in the name says it is a series, so
+ * without this it would be searched on TMDB as a film.
+ */
+export function libraryKindFor(url) {
+  const target = safeDecode(String(url));
+  const lib = getLibraries()
+    .filter(l => l.url && target.startsWith(safeDecode(l.url)))
+    .sort((a, b) => b.url.length - a.url.length)[0];
+  return lib ? (lib.kind === 'tv' ? 'tv' : 'movie') : null;
+}
+
 export function getLibraries() {
   try {
     const raw = getItem('libraries');

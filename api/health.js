@@ -19,7 +19,7 @@ export default async function handler(req, res) {
   const started = Date.now();
   try {
     const auth = tmdbAuth(key);
-    const url  = new URL('https://api.themoviedb.org/3/configuration');
+    const url  = new URL(`${process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3'}/configuration`);
     if (auth.apiKey) url.searchParams.set('api_key', auth.apiKey);
     const r = await fetch(url, { headers: auth.headers, signal: AbortSignal.timeout(6000) });
     if (r.status === 401) return res.status(200).json({ ok: false, reason: 'bad-key' });

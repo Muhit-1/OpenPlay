@@ -20,6 +20,7 @@ import { StatusChip, Rating, Notice } from '../components/ui';
 import { fetchMeta } from '../lib/tmdb';
 import { loadEpisodes, orderEpisodes, nextEpisode } from '../lib/episodes';
 import { parseRelease } from '../lib/release';
+import { libraryKindFor } from '../lib/server';
 import { saveProgress, getProgress } from '../lib/firebase';
 import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
@@ -99,7 +100,7 @@ export default function Player() {
     if (passedMeta) return;
     let live = true;
     const name = passedFile?.name || fileUrl.split('/').pop();
-    fetchMeta(name).then(m => { if (live && m?.found) setMeta(m); });
+    fetchMeta(name, libraryKindFor(fileUrl)).then(m => { if (live && m?.found) setMeta(m); });
     return () => { live = false; };
   }, [fileUrl, passedFile, passedMeta]);
 

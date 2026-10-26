@@ -107,3 +107,31 @@ export async function loadEpisodes(fileUrl) {
 
   return { videos: unique, subtitles };
 }
+
+/**
+ * Every episode of a show, read from the show's own folder: videos at its
+ * root plus the videos inside each subfolder (season folders, or any grouping).
+ * @returns {Promise<Array>}
+ */
+export async function loadShowEpisodes(showUrl) {
+  const root = await fetchDirectory(showUrl);
+  const tag = (files, hint) =>
+    (files || []).filter(f => f.type === 'video').map(f => ({ ...f, seasonHint: hint }));
+
+  const groups = await Promise.all(
+    (root.folders || []).slice(0, 40).map(async folder => {
+      try {
+        const data = await fetchDirectory(folder.url);
+        return tag(data.files, seasonFromFolderName(folder.name));
+      } catch { return []; }
+    })
+  );
+
+  const seen = new Set();
+  return [...tag(root.files, null), ...groups.flat()].filter(v => {
+    const key = safeDecode(v.url);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}

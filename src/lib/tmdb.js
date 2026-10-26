@@ -47,8 +47,10 @@ function cached(key, produce) {
 // ── Metadata ──────────────────────────────────────────────────────────────
 
 /** TMDB metadata for a release name (file or folder). */
-export async function fetchMeta(filename) {
-  const { title, year, kind } = parseRelease(filename);
+export async function fetchMeta(filename, forcedKind = null) {
+  const parsed = parseRelease(filename);
+  const { title, year } = parsed;
+  const kind = forcedKind || parsed.kind;
   const lang = getLang();
 
   if (!title) return { found: false, title: filename };

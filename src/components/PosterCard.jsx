@@ -11,6 +11,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play, Folder, Film, Info } from 'lucide-react';
 import { fetchMeta, fetchDirectory } from '../lib/tmdb';
+import { libraryKindFor } from '../lib/server';
 import { describeMedia, mediaSummary } from '../lib/playback';
 import { parseRelease } from '../lib/release';
 import { StatusChip, Rating } from './ui';
@@ -49,7 +50,7 @@ function ServerCard({ file, compact, onOpen }) {
           }
         }
 
-        const m = await fetchMeta(lookupName);
+        const m = await fetchMeta(lookupName, libraryKindFor(file.url));
         if (live && m?.found) setMeta(m);
       } catch { /* a card without metadata still works */ }
       finally { if (live) setLoading(false); }
