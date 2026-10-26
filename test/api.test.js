@@ -54,8 +54,15 @@ test('vercel.json carries the same CSP as the local server', () => {
 });
 
 test('a local install is never rate limited', async () => {
-  const results = await Promise.all(Array.from({ length: 700 }, () => get('/api/proxy')));
-  assert.ok(results.every(r => r.status === 400));   // 400 = reached the handler, not 429
+  // More than the old 240/min cap, sent in small batches: firing them all at
+  // once exhausts connection slots on Windows and fails for the wrong reason.
+  const statuses = [];
+  for (let batch = 0; batch < 14; batch++) {
+    const results = await Promise.all(Array.from({ length: 25 }, () => get('/api/proxy')));
+    statuses.push(...results.map(r => r.status));
+  }
+  assert.equal(statuses.length, 350);
+  assert.ok(statuses.every(code => code === 400));   // 400 = reached the handler, not 429
 });
 
 test('health says why metadata is unavailable', async () => {
