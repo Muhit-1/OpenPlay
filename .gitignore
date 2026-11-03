@@ -35,3 +35,4 @@ lerna-debug.log*
 
 # Private working notes / plan (not for the repo)
 CLAUDE_GUIDE.md
+/doc

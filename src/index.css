@@ -203,6 +203,209 @@ body {
 .card-unavailable { opacity: 0.55; }
 .card-unavailable .poster-frame { filter: grayscale(0.7); }
 
+/* ── Drag to VLC ────────────────────────────────────────────────────────────
+ * Anything with a file behind it can be dragged onto a player. The grip label
+ * appears on hover so the affordance is discoverable, and names what it does.
+ */
+
+[draggable='true'] { cursor: grab; }
+[draggable='true']:active { cursor: grabbing; }
+
+.grab-label {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px 3px 5px;
+  border-radius: 5px;
+  background: rgba(8, 11, 15, 0.84);
+  border: 1px solid var(--line-bright);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  pointer-events: none;
+}
+.card-link:hover .grab-label,
+.card-link:focus-visible .grab-label,
+.grab-host:hover > .grab-label { opacity: 1; transform: none; }
+
+/* The element the browser snapshots while a link is being dragged. */
+.drag-ghost {
+  position: fixed;
+  left: -999px;
+  top: -999px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 600 12.5px var(--font-body);
+  white-space: nowrap;
+}
+
+/* ── Continue-watching card ─────────────────────────────────────────────── */
+
+.resume-card { transition: border-color 0.18s ease, transform 0.18s ease; }
+.resume-card:hover,
+.resume-card:focus-visible { border-color: var(--accent); transform: translateY(-2px); }
+
+.resume-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-ink);
+  background: rgba(4, 6, 9, 0.5);
+  opacity: 0;
+  transition: opacity 0.16s ease;
+}
+.resume-play::before {
+  content: '';
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.resume-play > * { position: relative; }
+.resume-card:hover .resume-play,
+.resume-card:focus-visible .resume-play { opacity: 1; }
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 5px;
+  border: 1px solid var(--line-bright);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+/* ── Filter menus ───────────────────────────────────────────────────────── */
+
+.popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  z-index: 40;
+  min-width: 240px;
+  max-height: min(420px, 60vh);
+  overflow-y: auto;
+  padding: 6px;
+  background: var(--ink-850);
+  border: 1px solid var(--line-bright);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.85);
+  animation: rise 0.16s ease both;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 8px;
+  text-align: left;
+  font-size: 14.5px;
+  color: var(--text-soft);
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.menu-item:hover { background: var(--ink-800); color: var(--text); }
+.menu-item[aria-selected='true'] { color: var(--text); font-weight: 600; }
+
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border-radius: 7px;
+  background: var(--accent-dim);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  color: var(--accent-light);
+  font-size: 13px;
+}
+.filter-tag button {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  display: grid;
+  place-items: center;
+}
+.filter-tag button:hover { background: rgba(255, 255, 255, 0.12); }
+
+/* Segmented control (History type filter) */
+.segmented {
+  display: inline-flex;
+  padding: 3px;
+  gap: 2px;
+  background: var(--ink-900);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+}
+.segmented button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 32px;
+  padding: 0 13px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--text-dim);
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.segmented button:hover { color: var(--text); }
+.segmented button[aria-selected='true'] {
+  background: var(--ink-700);
+  color: var(--text);
+  font-weight: 600;
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 14px;
+  color: var(--text-soft);
+}
+.switch-track {
+  position: relative;
+  width: 34px;
+  height: 20px;
+  border-radius: 10px;
+  background: var(--ink-700);
+  border: 1px solid var(--line-bright);
+  transition: background-color 0.18s ease, border-color 0.18s ease;
+}
+.switch-track::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  transition: left 0.18s ease, background-color 0.18s ease;
+}
+.switch[aria-checked='true'] .switch-track { background: var(--accent); border-color: var(--accent); }
+.switch[aria-checked='true'] .switch-track::after { left: 16px; background: var(--accent-ink); }
+
 /* ── Horizontal rows ────────────────────────────────────────────────────── */
 
 .row-track {

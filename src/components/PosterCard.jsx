@@ -9,12 +9,13 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, Folder, Film, Info } from 'lucide-react';
+import { Play, Folder, Film, Info, GripVertical } from 'lucide-react';
 import { fetchMeta, fetchDirectory } from '../lib/tmdb';
 import { libraryKindFor } from '../lib/server';
 import { describeMedia, mediaSummary } from '../lib/playback';
 import { parseRelease } from '../lib/release';
 import { StatusChip, Rating } from './ui';
+import { dragLinkProps } from '../lib/drag';
 
 export default function PosterCard({
   file, item, compact = false, availability, onOpen,
@@ -86,6 +87,8 @@ function ServerCard({ file, compact, onOpen }) {
       title={title}
       poster={meta?.poster}
       loading={loading}
+      dragUrl={videoUrl}
+      dragLabel={file.name}
       fallbackIcon={file.type === 'folder' && !videoUrl ? Folder : Film}
       overlayIcon={isPlayable ? Play : undefined}
       overlayLabel={meta?.id ? 'Details' : isPlayable ? 'Play' : 'Open'}
@@ -147,19 +150,31 @@ function CatalogCard({ item, compact, availability }) {
 /* ── Shared frame ────────────────────────────────────────────────────────── */
 
 function Frame({
-  compact, onClick, title, poster, loading, unavailable,
+  compact, onClick, title, poster, loading, unavailable, dragUrl, dragLabel,
   fallbackIcon: Fallback, overlayIcon: Overlay, overlayLabel,
   topLeft, topRight, bottomOverlay, footer,
 }) {
   const [broken, setBroken] = useState(false);
   const ref = useRef(null);
 
+  // A div, not a <button>: Firefox will not start a drag from a button.
+  const onKeyDown = e => {
+    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      onClick();
+    }
+  };
+
   return (
-    <button
+    <div
       ref={ref}
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={onKeyDown}
       title={title}
-      className={`card-link flex-shrink-0 text-left ${compact ? 'w-32' : 'video-card'} ${unavailable ? 'card-unavailable' : ''}`}
+      className={`card-link flex-shrink-0 text-left cursor-pointer ${compact ? 'w-32' : 'video-card'} ${unavailable ? 'card-unavailable' : ''}`}
+      {...dragLinkProps(dragUrl, dragLabel)}
     >
       <div
         className={`poster-frame ${compact ? 'h-48' : 'video-card-poster'}`}
@@ -180,7 +195,13 @@ function Frame({
           </div>
         )}
 
-        {topLeft  && <div className="absolute top-2 left-2">{topLeft}</div>}
+        {dragUrl && (
+          <span className="grab-label">
+            <GripVertical size={11} aria-hidden="true" />
+            Drag to VLC
+          </span>
+        )}
+        {topLeft  &&<div className="absolute top-2 left-2">{topLeft}</div>}
         {topRight && (
           <div
             className="absolute top-2 right-2 px-1.5 py-0.5 rounded"
@@ -211,7 +232,7 @@ function Frame({
       </div>
 
       <div className="pt-2.5 px-0.5">{footer}</div>
-    </button>
+    </div>
   );
 }
 

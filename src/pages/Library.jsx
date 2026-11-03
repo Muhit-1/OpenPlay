@@ -5,13 +5,15 @@
 // The point of this page is that it shows *titles*. The server organises its
 // content into year buckets and alphabetical buckets, and Home used to surface
 // those buckets as cards — you clicked "TV Series ♦ M — R" and got a filing
-// cabinet. Here the buckets become a tab strip and the grid is always media.
+// cabinet. Here the buckets become filters (library, year or letters, sort) and
+// the grid is always media.
 
 import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ServerOff, FolderOpen, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import PosterCard from '../components/PosterCard';
 import { PosterSkeleton, EmptyState, Notice } from '../components/ui';
+import FilterMenu, { MenuItem } from '../components/FilterMenu';
 import { librariesFor, libraryIndex, libraryTitles } from '../lib/server';
 import { useAsync } from '../lib/useAsync';
 import { parseRelease } from '../lib/release';
@@ -50,10 +52,11 @@ export default function Library({ category }) {
   );
 
   const [filter, setFilter] = useState('');
+  const [sort, setSort] = useState('server');
   const [page, setPage] = useState(1);
 
   // Reset paging whenever the slice being viewed changes.
-  const viewKey = `${libKey}|${section?.key}|${filter}`;
+  const viewKey = `${libKey}|${section?.key}|${filter}|${sort}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (viewKey !== lastViewKey) {
     setLastViewKey(viewKey);
@@ -61,19 +64,36 @@ export default function Library({ category }) {
   }
 
   const matching = useMemo(() => {
-    if (!filter.trim()) return slice.titles;
     const needle = filter.trim().toLowerCase();
-    return slice.titles.filter(t =>
+    const found = !needle ? slice.titles : slice.titles.filter(t =>
       t.name.toLowerCase().includes(needle) ||
       parseRelease(t.name).title.toLowerCase().includes(needle)
     );
-  }, [slice.titles, filter]);
+    if (sort === 'server') return found;
+
+    const label = t => parseRelease(t.name).title || t.name;
+    return [...found].sort((a, b) =>
+      label(a).localeCompare(label(b), undefined, { numeric: true, sensitivity: 'base' })
+    );
+  }, [slice.titles, filter, sort]);
 
   const pageCount = Math.max(1, Math.ceil(matching.length / PER_PAGE));
   const current = Math.min(page, pageCount);
   const visible = matching.slice((current - 1) * PER_PAGE, current * PER_PAGE);
 
   const loading = indexLoading || titlesLoading;
+
+  const resetFilters = () => { setParams({}); setFilter(''); setSort('server'); };
+  const activeTags = [
+    libraries[0] && library && library.key !== libraries[0].key
+      ? { key: 'lib', label: library.label, clear: () => setParams({}) } : null,
+    section && index.sections[0] && section.key !== index.sections[0].key
+      ? { key: 'section', label: section.label, clear: () => setParams({ lib: libKey }) } : null,
+    filter.trim()
+      ? { key: 'q', label: `\u201c${filter.trim()}\u201d`, clear: () => setFilter('') } : null,
+    sort !== 'server'
+      ? { key: 'sort', label: SORTS.find(o => o.key === sort).label, clear: () => setSort('server') } : null,
+  ].filter(Boolean);
 
   if (libraries.length === 0) {
     return (
@@ -92,36 +112,83 @@ export default function Library({ category }) {
         <h1 className="font-display text-3xl">{HEADINGS[category] || 'Library'}</h1>
       </header>
 
-      {/* Which library */}
-      {libraries.length > 1 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {libraries.map(lib => (
-            <Chip
-              key={lib.key}
-              active={lib.key === library.key}
-              muted={lib.online === false}
-              onClick={() => setParams({ lib: lib.key })}
-            >
-              {lib.label}
-              {lib.online === false && <span className="data ml-1.5">offline</span>}
-            </Chip>
-          ))}
-        </div>
-      )}
+      {/* Library, year (or letters) and sort are filters, not rows of buttons */}
+      <div className="flex flex-wrap items-center gap-2.5 mb-3">
+        {libraries.length > 1 && (
+          <FilterMenu label="Library" value={library.label}>
+            {({ close }) => libraries.map(lib => (
+              <MenuItem
+                key={lib.key}
+                selected={lib.key === library.key}
+                dot={lib.online !== false}
+                onClick={() => { setParams({ lib: lib.key }); close(); }}
+              >
+                {lib.label}
+                {lib.online === false && <span className="data ml-2">offline</span>}
+              </MenuItem>
+            ))}
+          </FilterMenu>
+        )}
 
-      {/* Which slice of it — years or letters, never shown as folder cards */}
-      {index.sections.length > 1 && (
-        <div className="flex gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-4">
-          {index.sections.map(s => (
-            <Chip
-              key={s.key}
-              small
-              active={s.key === section?.key}
-              onClick={() => setParams({ lib: libKey, s: s.key })}
-            >
-              {s.label}
-            </Chip>
+        {index.sections.length > 1 && (
+          <FilterMenu label={index.shape === 'years' ? 'Year' : 'Section'} value={section?.label || ''}>
+            {({ close }) => (
+              <SectionPicker
+                sections={index.sections}
+                activeKey={section?.key}
+                onPick={key => { setParams({ lib: libKey, s: key }); close(); }}
+              />
+            )}
+          </FilterMenu>
+        )}
+
+        <FilterMenu label="Sort" value={SORTS.find(o => o.key === sort).label}>
+          {({ close }) => SORTS.map(o => (
+            <MenuItem key={o.key} selected={o.key === sort} onClick={() => { setSort(o.key); close(); }}>
+              {o.label}
+            </MenuItem>
           ))}
+        </FilterMenu>
+
+        {!loading && !index.error && slice.titles.length > 0 && (
+          <>
+            <div className="control flex items-center gap-2 px-3 h-10 flex-1 min-w-[200px] max-w-sm">
+              <Search size={15} style={{ color: 'var(--text-dim)' }} aria-hidden="true" />
+              <input
+                type="search"
+                value={filter}
+                onChange={e => setFilter(e.target.value)}
+                placeholder="Filter these titles"
+                aria-label="Filter titles"
+                className="flex-1 bg-transparent text-[14.5px] outline-none min-w-0"
+              />
+            </div>
+
+            <p className="data sm:ml-auto">
+              {matching.length} title{matching.length === 1 ? '' : 's'}
+              {section && index.sections.length > 1 ? ` · ${section.label}` : ''}
+            </p>
+          </>
+        )}
+      </div>
+
+      {activeTags.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          {activeTags.map(tag => (
+            <span key={tag.key} className="filter-tag">
+              {tag.label}
+              <button onClick={tag.clear} aria-label={`Remove filter ${tag.label}`}>
+                <X size={12} aria-hidden="true" />
+              </button>
+            </span>
+          ))}
+          <button
+            onClick={resetFilters}
+            className="text-[13px] underline underline-offset-4"
+            style={{ color: 'var(--text-dim)' }}
+          >
+            Reset filters
+          </button>
         </div>
       )}
 
@@ -133,32 +200,6 @@ export default function Library({ category }) {
 
       {slice.error && !index.error && (
         <Notice tone="error" title="Could not read this section">{slice.error}</Notice>
-      )}
-
-      {!loading && !index.error && slice.titles.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 mb-5">
-          <div className="control flex items-center gap-2 px-3 h-9 flex-1 min-w-[180px] max-w-xs">
-            <Search size={15} style={{ color: 'var(--text-dim)' }} aria-hidden="true" />
-            <input
-              type="search"
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              placeholder="Filter these titles"
-              aria-label="Filter titles"
-              className="flex-1 bg-transparent text-[14px] outline-none min-w-0"
-            />
-            {filter && (
-              <button onClick={() => setFilter('')} aria-label="Clear filter" style={{ color: 'var(--text-dim)' }}>
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          <p className="data">
-            {matching.length} title{matching.length === 1 ? '' : 's'}
-            {section && index.sections.length > 1 ? ` · ${section.label}` : ''}
-          </p>
-        </div>
       )}
 
       {loading ? (
@@ -206,22 +247,46 @@ export default function Library({ category }) {
   );
 }
 
-function Chip({ active, small, muted, onClick, children }) {
+const SORTS = [
+  { key: 'server', label: 'Server order' },
+  { key: 'az',     label: 'Title A\u2013Z' },
+];
+
+/**
+ * Years and other short labels read best as a grid; a long one ("2005 & Before")
+ * takes a full row. A list of mostly long labels stays a list.
+ */
+function SectionPicker({ sections, activeKey, onPick }) {
+  const isShort = s => s.label.length <= 6;
+  const compact = sections.filter(isShort).length >= sections.length * 0.6;
+
+  if (!compact) {
+    return sections.map(s => (
+      <MenuItem key={s.key} selected={s.key === activeKey} onClick={() => onPick(s.key)}>
+        {s.label}
+      </MenuItem>
+    ));
+  }
+
   return (
-    <button
-      onClick={onClick}
-      aria-pressed={active}
-      className={`flex-shrink-0 rounded-[10px] transition-colors ${small ? 'px-4 h-10 text-[14px]' : 'px-5 h-11 text-[15px]'}`}
-      style={{
-        background: active ? 'var(--accent)' : 'var(--ink-800)',
-        color: active ? 'var(--accent-ink)' : 'var(--text-soft)',
-        border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
-        fontWeight: active ? 600 : 400,
-        fontFamily: small ? 'var(--font-mono)' : 'inherit',
-        opacity: muted && !active ? 0.55 : 1,
-      }}
-    >
-      {children}
-    </button>
+    <div className="grid grid-cols-4 gap-1 p-0.5" style={{ width: 288 }}>
+      {sections.map(s => (
+        <button
+          key={s.key}
+          type="button"
+          role="option"
+          aria-selected={s.key === activeKey}
+          onClick={() => onPick(s.key)}
+          className={`h-9 rounded-lg mono text-[14px] transition-colors ${isShort(s) ? '' : 'col-span-4 text-left px-3'}`}
+          style={{
+            background: s.key === activeKey ? 'var(--accent)' : 'transparent',
+            color: s.key === activeKey ? 'var(--accent-ink)' : 'var(--text-soft)',
+            fontWeight: s.key === activeKey ? 600 : 400,
+          }}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
   );
 }

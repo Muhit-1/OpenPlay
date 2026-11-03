@@ -5,17 +5,18 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { History, Bookmark, Trash2, Play } from 'lucide-react';
 import { EmptyState, Rating } from '../components/ui';
-import { getContinueWatching, getBookmarks, removeBookmark } from '../lib/firebase';
+import { getBookmarks, removeBookmark } from '../lib/firebase';
 import { useAsync } from '../lib/useAsync';
 import { describeMedia, mediaSummary } from '../lib/playback';
+import HistoryList from '../components/HistoryList';
 
 export default function MyList({ mode }) {
   const isHistory = mode === 'history';
   const [version, setVersion] = useState(0);
 
   const { data: items, loading } = useAsync(
-    `${mode}|${version}`,
-    () => (isHistory ? getContinueWatching(60) : getBookmarks()).catch(() => []),
+    isHistory ? null : `${mode}|${version}`,   // history loads inside HistoryList
+    () => getBookmarks().catch(() => []),
     []
   );
 
@@ -36,7 +37,9 @@ export default function MyList({ mode }) {
         </p>
       </header>
 
-      {loading ? (
+      {isHistory ? (
+        <HistoryList />
+      ) : loading ? (
         <div className="space-y-2.5">
           {Array.from({ length: 6 }, (_, i) => (
             <div key={i} className="skeleton h-20 rounded-xl" />

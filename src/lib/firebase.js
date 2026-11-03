@@ -22,6 +22,7 @@ import {
   onAuthStateChanged,
 } from 'firebase/auth';
 import { getItem, setItem } from './storage.js';
+import { sameFile } from './text.js';
 
 // `?? {}` lets the module load under Node (tests), where import.meta.env is absent.
 const env = import.meta.env ?? {};
@@ -64,7 +65,7 @@ function localWrite(key, list) {
 
 /** Newest-first list with `entry` moved (or added) to the top. */
 function localUpsert(key, entry) {
-  const rest = localRead(key).filter(e => e.fileUrl !== entry.fileUrl);
+  const rest = localRead(key).filter(e => !sameFile(e.fileUrl, entry.fileUrl));
   localWrite(key, [entry, ...rest]);
 }
 
@@ -127,7 +128,7 @@ export async function saveProgress(fileUrl, title, poster, progressSeconds, dura
  */
 export async function getProgress(fileUrl) {
   if (!db) {
-    return localRead('local_history').find(e => e.fileUrl === fileUrl)?.progressSeconds || 0;
+    return localRead('local_history').find(e => sameFile(e.fileUrl, fileUrl))?.progressSeconds || 0;
   }
   const user = await ensureAuth();
   const id   = btoa(fileUrl).replace(/[/+=]/g, '_');
@@ -173,7 +174,7 @@ export async function addBookmark(fileUrl, title, poster) {
 
 export async function removeBookmark(fileUrl) {
   if (!db) {
-    localWrite('local_bookmarks', localRead('local_bookmarks').filter(e => e.fileUrl !== fileUrl));
+    localWrite('local_bookmarks', localRead('local_bookmarks').filter(e => !sameFile(e.fileUrl, fileUrl)));
     return;
   }
   const user = await ensureAuth();
@@ -197,7 +198,7 @@ export async function getBookmarks() {
 
 export async function isBookmarked(fileUrl) {
   if (!db) {
-    return localRead('local_bookmarks').some(e => e.fileUrl === fileUrl);
+    return localRead('local_bookmarks').some(e => sameFile(e.fileUrl, fileUrl));
   }
   const user = await ensureAuth();
   const id   = btoa(fileUrl).replace(/[/+=]/g, '_');

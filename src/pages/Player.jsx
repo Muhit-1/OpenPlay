@@ -14,6 +14,7 @@ import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, Pause, Volume2, Volume1, VolumeX, Maximize, Minimize,
   RotateCcw, RotateCw, Copy, Check, Download, Subtitles, SkipForward,
+  PanelRightOpen, GripVertical,
 } from 'lucide-react';
 import EpisodeList from '../components/EpisodeList';
 import { StatusChip, Rating, Notice } from '../components/ui';
@@ -22,10 +23,13 @@ import { loadEpisodes, orderEpisodes, nextEpisode } from '../lib/episodes';
 import { parseRelease } from '../lib/release';
 import { libraryKindFor } from '../lib/server';
 import { apiUrl, mediaSrc } from '../lib/api';
-import { saveProgress, getProgress } from '../lib/firebase';
+import { saveProgress, getProgress, getContinueWatching } from '../lib/firebase';
+import { dragLinkProps } from '../lib/drag';
+import { progressOf, episodeName } from '../lib/history';
+import { getItem, setItem } from '../lib/storage';
 import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
-import { safeDecode, basename } from '../lib/text';
+import { basename, normalizeFileUrl } from '../lib/text';
 import { useAsync } from '../lib/useAsync';
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -35,7 +39,9 @@ export default function Player() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const fileUrl = safeDecode(encodedUrl);
+  // The router has already decoded the parameter once; decoding it again left
+  // raw spaces in the URL and the server listed the folder as empty.
+  const fileUrl = normalizeFileUrl(encodedUrl);
   const passedFile = location.state?.file;
   const passedMeta = location.state?.meta;
 
@@ -46,6 +52,7 @@ export default function Player() {
 
   const [meta, setMeta] = useState(passedMeta || null);
   const [siblings, setSiblings] = useState([]);
+  const [loadedFor, setLoadedFor] = useState(null);
   const [subtitles, setSubtitles] = useState([]);
   const [activeSub, setActiveSub] = useState(null);
 
@@ -63,6 +70,11 @@ export default function Player() {
   const [controlsVisible, setControlsVisible] = useState(true);
   const [scrub, setScrub] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  // Episode panel + autoplay. Both are remembered between visits.
+  const [listOpen, setListOpen] = useState(() => getItem('episode_panel') !== 'hidden');
+  const [autoplay, setAutoplay] = useState(() => getItem('autoplay_next') !== 'off');
+  const [skippedUrl, setSkippedUrl] = useState(null);   // "Cancel" on the up-next card
 
   const media = describeMedia(fileUrl);
 
@@ -89,12 +101,33 @@ export default function Player() {
   const ordered = useMemo(() => orderEpisodes(siblings), [siblings]);
   const next = nextEpisode(ordered, fileUrl);
 
-  const advanceRef = useRef(() => {});
-  useEffect(() => {
-    advanceRef.current = () => {
-      if (next) navigate(`/watch/${encodeURIComponent(next.url)}`, { state: { file: next, meta } });
-    };
+  const goNext = useCallback(() => {
+    if (next) navigate(`/watch/${encodeURIComponent(next.url)}`, { state: { file: next, meta } });
   }, [next, meta, navigate]);
+
+  // Finishing an episode only rolls on when autoplay is on and it was not cancelled.
+  const skipped = skippedUrl === fileUrl;
+  const endedRef = useRef(() => {});
+  useEffect(() => {
+    endedRef.current = () => { if (autoplay && !skipped) goNext(); };
+  }, [autoplay, skipped, goNext]);
+
+  const changeAutoplay = on => {
+    setAutoplay(on);
+    setItem('autoplay_next', on ? 'on' : 'off');
+  };
+
+  const changeListOpen = open => {
+    setListOpen(open);
+    setItem('episode_panel', open ? 'shown' : 'hidden');
+  };
+
+  // How far through each file you are, so the panel can show watched episodes.
+  const { data: history } = useAsync('player-history', () => getContinueWatching(300).catch(() => []), []);
+  const progressMap = useMemo(
+    () => new Map(history.map(h => [normalizeFileUrl(h.fileUrl), progressOf(h)])),
+    [history]
+  );
 
   // ── Metadata ──
   useEffect(() => {
@@ -112,6 +145,7 @@ export default function Player() {
     loadEpisodes(fileUrl).then(({ videos, subtitles: subs }) => {
       if (!live) return;
       setSiblings(videos);
+      setLoadedFor(fileUrl);
       setSubtitles(
         subs.map(f => ({
           label: subtitleLabel(f.name),
@@ -120,7 +154,7 @@ export default function Player() {
           src: /\.srt$/i.test(f.url) ? apiUrl(`/api/proxy?url=${encodeURIComponent(f.url)}`) : mediaSrc(f.url),
         }))
       );
-    }).catch(() => {});
+    }).catch(() => { if (live) setLoadedFor(fileUrl); });
 
     return () => { live = false; };
   }, [fileUrl]);
@@ -160,7 +194,7 @@ export default function Player() {
     const onEnded = () => {
       setPlaying(false);
       saveRef.current(v.currentTime, v.duration);
-      advanceRef.current();   // roll straight into the next episode
+      endedRef.current();   // roll into the next episode when autoplay allows
     };
 
     v.addEventListener('play', onPlay);
@@ -272,6 +306,7 @@ export default function Player() {
         ArrowDown: () => { v.volume = Math.max(v.volume - 0.1, 0); },
         m: () => { v.muted = !v.muted; },
         f: () => toggleFullscreen(),
+        n: () => goNext(),
       };
 
       const handler = handlers[e.key] || handlers[e.key.toLowerCase()];
@@ -280,7 +315,7 @@ export default function Player() {
 
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [togglePlay, seekBy, toggleFullscreen, nudgeControls]);
+  }, [togglePlay, seekBy, toggleFullscreen, nudgeControls, goNext]);
 
   // ── Scrubbing ──
   const ratioFromEvent = e => {
@@ -315,6 +350,15 @@ export default function Player() {
     ? `${parsedName.season ? `S${String(parsedName.season).padStart(2, '0')}` : ''}E${String(parsedName.episode).padStart(2, '0')}`
     : null;
 
+  // The side panel belongs to anything that is an episode of something.
+  const isEpisode = parsedName.episode != null;
+  const hasPanel = siblings.length > 1;
+  const panelLoading = isEpisode && loadedFor !== fileUrl && !hasPanel;
+
+  // Last stretch of an episode: offer the next one.
+  const remaining = duration ? duration - time : Infinity;
+  const showUpNext = !!next && autoplay && !skipped && remaining <= 20 && remaining > 0;
+
   const playedPct = duration ? (time / duration) * 100 : 0;
   const bufferedPct = duration ? (buffered / duration) * 100 : 0;
   const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
@@ -340,9 +384,20 @@ export default function Player() {
           )}
         </div>
 
+        {hasPanel && !listOpen && (
+          <button
+            onClick={() => changeListOpen(true)}
+            className="control flex items-center gap-2 px-3.5 h-10 text-sm flex-shrink-0"
+            style={{ color: 'var(--text-soft)' }}
+          >
+            <PanelRightOpen size={15} aria-hidden="true" />
+            <span className="hidden sm:inline">Episodes</span>
+          </button>
+        )}
+
         {next && (
           <button
-            onClick={() => advanceRef.current()}
+            onClick={goNext}
             className="control flex items-center gap-2 px-3.5 h-10 text-sm flex-shrink-0"
             style={{ color: 'var(--text-soft)' }}
           >
@@ -352,7 +407,7 @@ export default function Player() {
         )}
       </div>
 
-      <div className="flex flex-col lg:flex-row gap-7">
+      <div className="flex flex-col lg:flex-row gap-6">
         <div className="flex-1 min-w-0">
           {playback?.status === 'blocked' && (
             <div className="mb-3 flex flex-col gap-3">
@@ -385,6 +440,27 @@ export default function Player() {
               playsInline
               onClick={togglePlay}
             />
+
+            {/* The grip is the drag source: dragging the video itself would fight the scrubber. */}
+            <div
+              className="absolute top-3 left-3 z-[3] transition-opacity duration-200"
+              style={{ opacity: controlsVisible ? 1 : 0, pointerEvents: controlsVisible ? 'auto' : 'none' }}
+            >
+              <span
+                className="flex items-center gap-1.5 pl-1.5 pr-2.5 h-8 rounded-lg mono text-[10.5px] uppercase tracking-wider select-none"
+                style={{
+                  background: 'rgba(8,11,15,0.82)',
+                  border: '1px solid var(--line-bright)',
+                  color: 'var(--text-soft)',
+                  cursor: 'grab',
+                }}
+                title="Drag onto VLC to play this file there"
+                {...dragLinkProps(fileUrl, passedFile?.name || basename(fileUrl))}
+              >
+                <GripVertical size={14} aria-hidden="true" />
+                Drag to VLC
+              </span>
+            </div>
 
             {!playing && (
               <button
@@ -423,6 +499,35 @@ export default function Player() {
                     style={{ color: 'var(--text-dim)' }}
                   >
                     Start over
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showUpNext && (
+              <div
+                className="absolute right-4 bottom-24 z-[3] w-72 rounded-xl p-3.5"
+                style={{
+                  background: 'rgba(8,11,15,0.92)',
+                  border: '1px solid var(--line-bright)',
+                  backdropFilter: 'blur(8px)',
+                }}
+                role="status"
+              >
+                <p className="eyebrow">Up next · {Math.ceil(remaining)}s</p>
+                <p className="text-sm font-semibold mt-1.5 truncate">
+                  {episodeLabel(next)}
+                </p>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={goNext} className="btn-accent flex-1 h-8 rounded-lg text-[13px]">
+                    Play now
+                  </button>
+                  <button
+                    onClick={() => setSkippedUrl(fileUrl)}
+                    className="control flex-1 h-8 text-[13px]"
+                    style={{ color: 'var(--text-soft)' }}
+                  >
+                    Cancel
                   </button>
                 </div>
               </div>
@@ -598,7 +703,7 @@ export default function Player() {
           )}
 
           <p className="data mt-3">
-            Space play · &larr; &rarr; 10s · &uarr; &darr; volume · M mute · F fullscreen
+            Space play · &larr; &rarr; 10s · &uarr; &darr; volume · M mute · F fullscreen · drag the grip onto VLC
           </p>
 
           {/* Title block */}
@@ -644,15 +749,41 @@ export default function Player() {
           </div>
         </div>
 
-        {siblings.length > 1 && (
-          <aside className="lg:w-80 xl:w-96 flex-shrink-0 lg:sticky lg:top-4 lg:self-start">
-            <h2 className="eyebrow mb-3">{ordered.some(f => f.episode != null) ? 'Episodes' : 'In this folder'}</h2>
-            <EpisodeList files={ordered} currentUrl={fileUrl} showMeta={meta} />
+        {hasPanel && listOpen && (
+          <aside
+            className="lg:w-[360px] xl:w-[392px] flex-shrink-0 lg:sticky lg:top-20 lg:self-start"
+            aria-label="Episodes"
+          >
+            <EpisodeList
+              variant="panel"
+              files={ordered}
+              currentUrl={fileUrl}
+              showMeta={meta}
+              showTitle={title}
+              progress={progressMap}
+              autoplay={autoplay}
+              onAutoplayChange={changeAutoplay}
+              onHide={() => changeListOpen(false)}
+            />
+          </aside>
+        )}
+
+        {!hasPanel && panelLoading && listOpen && (
+          <aside className="lg:w-[360px] xl:w-[392px] flex-shrink-0" aria-hidden="true">
+            <div className="skeleton rounded-[14px]" style={{ height: 420 }} />
           </aside>
         )}
       </div>
     </div>
   );
+}
+
+function episodeLabel(file) {
+  const tag = file.season != null && file.episode != null
+    ? `S${String(file.season).padStart(2, '0')}E${String(file.episode).padStart(2, '0')}`
+    : file.episode != null ? `E${String(file.episode).padStart(2, '0')}` : '';
+  const name = episodeName(file.name) || parseRelease(file.name).title;
+  return [tag, name].filter(Boolean).join(' · ');
 }
 
 /** TextTrackList is array-like but not an array; index it explicitly. */

@@ -13,6 +13,8 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HardDrive, ArrowRight, Settings as SettingsIcon, Play } from 'lucide-react';
 import Row from '../components/Row';
+import ResumeCard from '../components/ResumeCard';
+import { groupHistory } from '../lib/history';
 import { Spinner, Notice } from '../components/ui';
 import { fetchDirectory, fetchTrending, fetchByGenre } from '../lib/tmdb';
 import { getContinueWatching } from '../lib/firebase';
@@ -37,6 +39,12 @@ export default function Home() {
   const [trendingSeries, setTrendingSeries] = useState([]);
   const [genreRows, setGenreRows] = useState([]);
   const [tmdbLoading, setTmdbLoading] = useState(true);
+
+  // One card per show or film: the latest thing you were partway through.
+  const resume = useMemo(
+    () => groupHistory(continueList, { hideFinished: true }).slice(0, 8),
+    [continueList]
+  );
 
   // Newest slice of each library, resolved to titles.
   const shelves = useMemo(
@@ -65,7 +73,7 @@ export default function Home() {
       });
     });
 
-    getContinueWatching(12).then(list => live && setContinueList(list)).catch(() => {});
+    getContinueWatching(80).then(list => live && setContinueList(list)).catch(() => {});
     return () => { live = false; };
   }, [ispUrl]);
 
@@ -97,12 +105,30 @@ export default function Home() {
     <div className="page-enter py-7">
       <ServerHeader server={server} url={ispUrl} navigate={navigate} />
 
-      {continueList.length > 0 && (
-        <Row
-          eyebrow="Where you left off"
-          title="Continue watching"
-          files={continueList.map(item => ({ name: item.title, url: item.fileUrl, type: 'video' }))}
-        />
+      {resume.length > 0 && (
+        <section className="mb-9">
+          <div className="flex items-end justify-between gap-4 mb-3.5 px-5 sm:px-7">
+            <div className="min-w-0">
+              <p className="eyebrow mb-1">Where you left off</p>
+              <h2 className="font-display text-lg leading-none truncate">Continue watching</h2>
+            </div>
+            <button
+              onClick={() => navigate('/history')}
+              className="flex items-center gap-1 px-2.5 h-8 rounded-lg text-[13px] control"
+              style={{ color: 'var(--text-soft)' }}
+            >
+              History
+              <ArrowRight size={13} aria-hidden="true" />
+            </button>
+          </div>
+
+          <div
+            className="grid gap-3.5 px-5 sm:px-7"
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))' }}
+          >
+            {resume.map(group => <ResumeCard key={group.key} group={group} />)}
+          </div>
+        </section>
       )}
 
       {server.state === 'offline' && server.error && (

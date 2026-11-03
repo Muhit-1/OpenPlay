@@ -87,6 +87,18 @@ export function saveLibraries(libraries) {
   clearDirCache();
 }
 
+/**
+ * 'movies' | 'series' | 'animation' for a file, from the library it lives in,
+ * or null when it sits outside every known library.
+ */
+export function libraryCategoryFor(url) {
+  const target = safeDecode(String(url));
+  const lib = getLibraries()
+    .filter(l => l.url && target.startsWith(safeDecode(l.url)))
+    .sort((a, b) => b.url.length - a.url.length)[0];
+  return lib ? (lib.category || inferCategory(lib)) : null;
+}
+
 /** Libraries in one section of the navigation. */
 export function librariesFor(category) {
   return getLibraries().filter(lib => (lib.category || inferCategory(lib)) === category);
@@ -127,6 +139,10 @@ export function listDir(url) {
       folders: [], files: [],
       error: err.name === 'TimeoutError' ? 'Server did not respond' : err.message,
     }));
+
+  // A failed read must not be remembered: one dropped request would otherwise
+  // leave this folder looking empty (no episode list, no titles) until reload.
+  promise.then(result => { if (result.error && dirCache.get(url) === promise) dirCache.delete(url); });
 
   dirCache.set(url, promise);
   return promise;
