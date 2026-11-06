@@ -13,22 +13,27 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Play, Pause, Volume2, Volume1, VolumeX, Maximize, Minimize,
-  RotateCcw, RotateCw, Copy, Check, Download, Subtitles, SkipForward,
+  RotateCcw, RotateCw, Copy, Check, Download, SkipForward,
   PanelRightOpen, GripVertical,
 } from 'lucide-react';
 import EpisodeList from '../components/EpisodeList';
 import { StatusChip, Rating, Notice } from '../components/ui';
 import { fetchMeta } from '../lib/tmdb';
-import { loadEpisodes, orderEpisodes, nextEpisode } from '../lib/episodes';
+import { loadEpisodes, orderEpisodes, nextEpisode, sameUrl } from '../lib/episodes';
 import { parseRelease } from '../lib/release';
 import { libraryKindFor } from '../lib/server';
-import { apiUrl, mediaSrc } from '../lib/api';
+import { mediaSrc } from '../lib/api';
 import { saveProgress, getProgress, getContinueWatching } from '../lib/firebase';
 import { dragLinkProps } from '../lib/drag';
 import { progressOf, episodeName } from '../lib/history';
 import { getItem, setItem } from '../lib/storage';
 import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
 import VlcButton from '../components/VlcButton';
+import SubtitleMenu from '../components/SubtitleMenu';
+import {
+  toVtt, shiftVtt, decodeSubtitle, fetchProxiedText, readOffsets, offsetFor, withOffset,
+  readSubStyle, saveSubStyle, SUB_SIZES,
+} from '../lib/subtitles';
 import { basename, normalizeFileUrl } from '../lib/text';
 import { useAsync } from '../lib/useAsync';
 
@@ -53,8 +58,14 @@ export default function Player() {
   const [meta, setMeta] = useState(passedMeta || null);
   const [siblings, setSiblings] = useState([]);
   const [loadedFor, setLoadedFor] = useState(null);
-  const [subtitles, setSubtitles] = useState([]);
+  const [subtitles, setSubtitles] = useState([]);       // files beside the video
   const [activeSub, setActiveSub] = useState(null);
+  const [subFor, setSubFor] = useState(fileUrl);
+  const [subNote, setSubNote] = useState(null);
+  const [offsets, setOffsets] = useState(readOffsets);
+  const [subStyle, setSubStyle] = useState(readSubStyle);
+  const subTextRef = useRef({ id: null, text: '' });
+  const menuOpenRef = useRef(false);
 
   const [resumeAt, setResumeAt] = useState(0);
   const [showResume, setShowResume] = useState(false);
@@ -147,12 +158,17 @@ export default function Player() {
       setSiblings(videos);
       setLoadedFor(fileUrl);
       setSubtitles(
-        subs.map(f => ({
-          label: subtitleLabel(f.name),
-          language: subtitleLang(f.name),
-          // SRT has to be converted to WebVTT; the proxy does that.
-          src: /\.srt$/i.test(f.url) ? apiUrl(`/api/proxy?url=${encodeURIComponent(f.url)}`) : mediaSrc(f.url),
-        }))
+        subs
+          .filter(f => /\.(srt|vtt)$/i.test(f.name))      // the only formats a browser can show
+          .map(f => ({
+            id: `file:${f.url}`,
+            kind: 'file',
+            label: subtitleLabel(f.name),
+            language: subtitleLang(f.name),
+            detail: f.name,
+            // Read through the proxy (CORS), then turned into WebVTT and shifted in the browser.
+            load: () => fetchProxiedText(f.url),
+          }))
       );
     }).catch(() => { if (live) setLoadedFor(fileUrl); });
 
@@ -223,8 +239,19 @@ export default function Player() {
     };
   }, [fileUrl]);
 
+  // A subtitle belongs to one episode: moving to the next one switches it off.
+  if (subFor !== fileUrl) {
+    setSubFor(fileUrl);
+    setActiveSub(null);
+    setSubNote(null);
+  }
+
+  const offset = offsetFor(offsets, fileUrl);
+
   // ── Subtitle tracks ──
-  // Every <track> this component added is removed before adding the next one.
+  // The subtitle's text is fetched once, shifted by this file's timing offset in
+  // the browser, and handed to a <track> as a blob. Every <track> this component
+  // added is removed before adding the next one.
   useEffect(() => {
     const v = videoRef.current;
     if (!v) return;
@@ -234,25 +261,115 @@ export default function Player() {
 
     if (!activeSub) return;
 
-    const track = document.createElement('track');
-    track.kind = 'subtitles';
-    track.label = activeSub.label;
-    track.srclang = activeSub.language;
-    track.src = activeSub.src;
-    track.default = true;
-    track.setAttribute('data-openplay', '');
-    v.appendChild(track);
+    let live = true;
+    let objectUrl = null;
 
-    // The TextTrack object only exists once the element is attached.
-    requestAnimationFrame(() => showTrack(v, activeSub.label));
-  }, [activeSub]);
+    const text = subTextRef.current.id === activeSub.id
+      ? Promise.resolve(subTextRef.current.text)
+      : activeSub.load().then(raw => {
+          const vtt = toVtt(raw);
+          subTextRef.current = { id: activeSub.id, text: vtt };
+          return vtt;
+        });
+
+    text.then(vtt => {
+      if (!live) return;
+
+      objectUrl = URL.createObjectURL(new Blob([shiftVtt(vtt, offset)], { type: 'text/vtt' }));
+
+      const track = document.createElement('track');
+      track.kind = 'subtitles';
+      track.label = activeSub.label;
+      track.srclang = activeSub.language || 'und';
+      track.src = objectUrl;
+      track.default = true;
+      track.setAttribute('data-openplay', '');
+      v.appendChild(track);
+
+      // The TextTrack object only exists once the element is attached.
+      requestAnimationFrame(() => showTrack(v, activeSub.label));
+    }).catch(err => {
+      if (!live) return;
+      setSubNote(err?.message || 'That subtitle could not be loaded.');
+      setActiveSub(null);
+    });
+
+    return () => {
+      live = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [activeSub, offset]);
+
+  // Caption size follows the picture, not the window: ~5% of its height.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const scale = SUB_SIZES.find(s => s.key === subStyle.size)?.scale ?? 1;
+    const apply = () => {
+      const h = v.clientHeight || 360;
+      v.style.setProperty('--sub-size', `${Math.max(15, Math.round(h * 0.05 * scale))}px`);
+    };
+    v.style.setProperty('--sub-bg', subStyle.background ? 'rgba(8, 11, 15, 0.72)' : 'transparent');
+    apply();
+
+    const observer = new ResizeObserver(apply);
+    observer.observe(v);
+    return () => observer.disconnect();
+  }, [subStyle]);
+
+  // A failure note clears itself.
+  useEffect(() => {
+    if (!subNote) return;
+    const timer = setTimeout(() => setSubNote(null), 7000);
+    return () => clearTimeout(timer);
+  }, [subNote]);
+
+  const selectSub = sub => { setSubNote(null); setActiveSub(sub); };
+
+  // `next` is a number, or a function of the current offset (so quick repeated
+  // clicks each build on the last one instead of a stale render).
+  const changeOffset = next => {
+    setOffsets(prev => {
+      const current = offsetFor(prev, fileUrl);
+      const seconds = typeof next === 'function' ? next(current) : next;
+      return withOffset(prev, fileUrl, Math.max(-60, Math.min(60, seconds)));
+    });
+  };
+
+  const changeSubStyle = next => setSubStyle(saveSubStyle(next));
+
+  const uploadSub = async file => {
+    if (!/\.(srt|vtt)$/i.test(file.name)) { setSubNote('Only .srt and .vtt subtitle files can be shown here.'); return; }
+    if (file.size > 2_500_000) { setSubNote('That file is too large to be a subtitle.'); return; }
+    try {
+      const vtt = toVtt(decodeSubtitle(await file.arrayBuffer()));
+      selectSub({
+        id: `upload:${file.name}:${file.size}`,
+        kind: 'upload',
+        label: file.name.replace(/\.[^.]+$/, ''),
+        language: 'und',
+        load: async () => vtt,
+      });
+    } catch {
+      setSubNote('That file could not be read.');
+    }
+  };
 
   // ── Controls auto-hide ──
   const nudgeControls = useCallback(() => {
     setControlsVisible(true);
     clearTimeout(hideTimer.current);
-    if (playing) hideTimer.current = setTimeout(() => setControlsVisible(false), 3000);
+    if (playing) {
+      hideTimer.current = setTimeout(() => { if (!menuOpenRef.current) setControlsVisible(false); }, 3000);
+    }
   }, [playing]);
+
+  // The controls stay up while the subtitle menu is open, and the countdown restarts when it closes.
+  const onSubMenuOpen = useCallback(open => {
+    menuOpenRef.current = open;
+    if (open) { setControlsVisible(true); clearTimeout(hideTimer.current); } else { nudgeControls(); }
+  }, [nudgeControls]);
 
   // Pausing must reveal the controls again; playing starts the hide countdown.
   useEffect(() => {
@@ -260,7 +377,7 @@ export default function Player() {
       clearTimeout(hideTimer.current);
       return;
     }
-    hideTimer.current = setTimeout(() => setControlsVisible(false), 3000);
+    hideTimer.current = setTimeout(() => { if (!menuOpenRef.current) setControlsVisible(false); }, 3000);
     return () => clearTimeout(hideTimer.current);
   }, [playing]);
 
@@ -293,6 +410,7 @@ export default function Player() {
     const onKey = e => {
       const tag = e.target.tagName;
       if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+      if (e.target.closest?.('[data-subtitle-menu]')) return;   // typing or tabbing inside the menu
 
       const v = videoRef.current;
       if (!v) return;
@@ -358,6 +476,17 @@ export default function Player() {
   // Last stretch of an episode: offer the next one.
   const remaining = duration ? duration - time : Infinity;
   const showUpNext = !!next && autoplay && !skipped && remaining <= 20 && remaining > 0;
+
+  // What to search OpenSubtitles for: the TMDB id when we have one, the title otherwise.
+  const current = ordered.find(f => sameUrl(f.url, fileUrl));
+  const subLookup = {
+    type: meta?.type === 'tv' || parsedName.episode != null ? 'tv' : 'movie',
+    tmdbId: meta?.id,
+    season: parsedName.season ?? current?.season ?? (parsedName.episode != null ? 1 : undefined),
+    episode: parsedName.episode ?? undefined,
+    query: meta?.title || parsedName.title,
+    year: parsedName.year || meta?.year,
+  };
 
   const playedPct = duration ? (time / duration) * 100 : 0;
   const bufferedPct = duration ? (buffered / duration) * 100 : 0;
@@ -430,7 +559,7 @@ export default function Player() {
             ref={shellRef}
             className="player-shell relative select-none"
             onMouseMove={nudgeControls}
-            onMouseLeave={() => playing && setControlsVisible(false)}
+            onMouseLeave={() => playing && !menuOpenRef.current && setControlsVisible(false)}
             style={{ cursor: controlsVisible ? 'default' : 'none' }}
           >
             <video
@@ -461,6 +590,14 @@ export default function Player() {
                 Drag to VLC
               </span>
             </div>
+
+            {subNote && (
+              <div className="absolute top-3 right-3 z-[3] max-w-[70%]" role="status">
+                <span className="chip chip-error" style={{ whiteSpace: 'normal', lineHeight: 1.35, padding: '6px 10px' }}>
+                  {subNote}
+                </span>
+              </div>
+            )}
 
             {!playing && (
               <button
@@ -589,27 +726,19 @@ export default function Player() {
 
                 <div className="flex-1" />
 
-                {subtitles.length > 0 && (
-                  <div className="flex items-center gap-1.5">
-                    <Subtitles size={15} style={{ color: 'var(--text-dim)' }} aria-hidden="true" />
-                    <select
-                      value={activeSub?.src || ''}
-                      onChange={e =>
-                        setActiveSub(subtitles.find(s => s.src === e.target.value) || null)
-                      }
-                      aria-label="Subtitles"
-                      className="bg-transparent mono text-[11px] outline-none cursor-pointer"
-                      style={{ color: 'var(--text-soft)' }}
-                    >
-                      <option value="" style={{ background: 'var(--ink-800)' }}>Off</option>
-                      {subtitles.map(s => (
-                        <option key={s.src} value={s.src} style={{ background: 'var(--ink-800)' }}>
-                          {s.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
+                <SubtitleMenu
+                  lookup={subLookup}
+                  release={passedFile?.name || basename(fileUrl)}
+                  local={subtitles}
+                  active={activeSub}
+                  onSelect={selectSub}
+                  onUpload={uploadSub}
+                  offset={offset}
+                  onOffset={changeOffset}
+                  style={subStyle}
+                  onStyle={changeSubStyle}
+                  onOpenChange={onSubMenuOpen}
+                />
 
                 <CtrlButton
                   onClick={() => { videoRef.current.muted = !videoRef.current.muted; }}
@@ -692,12 +821,12 @@ export default function Player() {
                 )}
                 {subtitles.length === 0 && (
                   <p>
-                    Its subtitles are stored inside the file rather than as a separate
-                    <span className="mono"> .srt </span> next to it, and browsers cannot read
-                    those either.
+                    No <span className="mono">.srt</span> sits next to this file. Use the
+                    subtitles button on the player to search OpenSubtitles or add a file.
+                    Subtitles stored inside the video itself cannot be read by a browser.
                   </p>
                 )}
-                <p className="mt-1.5">Both work in VLC.</p>
+                <p className="mt-1.5">Embedded subtitles and extra audio tracks work in VLC.</p>
               </Notice>
             </div>
           )}

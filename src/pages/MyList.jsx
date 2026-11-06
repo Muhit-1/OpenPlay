@@ -4,7 +4,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { History, Bookmark, Trash2, Play } from 'lucide-react';
-import { EmptyState, Rating } from '../components/ui';
+import { EmptyState, Rating, FadeImg } from '../components/ui';
 import { getBookmarks, removeBookmark } from '../lib/firebase';
 import { useAsync } from '../lib/useAsync';
 import { describeMedia, mediaSummary } from '../lib/playback';
@@ -28,7 +28,6 @@ export default function MyList({ mode }) {
   return (
     <div className="page-enter px-5 sm:px-7 py-7">
       <header className="mb-7">
-        <p className="eyebrow mb-2">Yours</p>
         <h1 className="font-display text-3xl">{isHistory ? 'History' : 'Watchlist'}</h1>
         <p className="text-[15px] mt-2" style={{ color: 'var(--text-dim)' }}>
           {isHistory
@@ -93,7 +92,7 @@ function Entry({ item, isHistory, onRemove }) {
             style={{ background: 'var(--ink-800)' }}
           >
             {item.poster ? (
-              <img src={item.poster} alt="" loading="lazy" className="w-full h-full object-cover" />
+              <FadeImg src={item.poster} loading="lazy" className="w-full h-full object-cover" />
             ) : (
               <Play size={16} style={{ color: 'var(--text-faint)' }} aria-hidden="true" />
             )}

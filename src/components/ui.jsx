@@ -66,17 +66,58 @@ export function Spinner({ size = 16, label }) {
   );
 }
 
-export function SectionHeader({ eyebrow, title, action, children }) {
+/**
+ * A heading with an optional quiet note beside it ("English Movies · on your
+ * server"). The note follows the heading on the same line; it never sits above
+ * it as a label.
+ */
+export function SectionHeader({ hint, title, action, children, as: Tag = 'h2' }) {
   return (
     <div className="flex items-end justify-between gap-4 mb-4">
       <div className="min-w-0">
-        {eyebrow && <p className="eyebrow mb-1.5">{eyebrow}</p>}
-        <h2 className="font-display text-xl leading-none truncate" style={{ color: 'var(--text)' }}>
-          {title}
-        </h2>
+        <div className="flex items-baseline gap-3 min-w-0">
+          <Tag className="font-display text-xl leading-tight truncate" style={{ color: 'var(--text)' }}>
+            {title}
+          </Tag>
+          {hint && (
+            <span className="hidden sm:inline text-[13px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>{hint}</span>
+          )}
+        </div>
         {children}
       </div>
       {action}
+    </div>
+  );
+}
+
+/**
+ * An <img> that sharpens in once loaded, over whatever is beneath it (usually a
+ * skeleton). Class toggling is done on the element so a cached image that has
+ * already loaded before React attached `onLoad` still appears.
+ */
+export function FadeImg({ className = '', alt = '', ...props }) {
+  const mark = el => { if (el && el.complete && el.naturalWidth > 0) el.classList.add('is-loaded'); };
+  return (
+    <img
+      ref={mark}
+      alt={alt}
+      draggable={false}
+      {...props}
+      onLoad={e => { e.currentTarget.classList.add('is-loaded'); props.onLoad?.(e); }}
+      className={`fade-img ${className}`}
+    />
+  );
+}
+
+/** What a route shows while its code loads: the shape of a page, not a spinner. */
+export function PageSkeleton() {
+  return (
+    <div className="page-load px-5 sm:px-7 py-7" role="status" aria-live="polite">
+      <span className="sr-only">Loading</span>
+      <div className="skeleton h-8 w-48 rounded-lg mb-8" />
+      <div className="flex gap-4 overflow-hidden">
+        {Array.from({ length: 8 }, (_, i) => <PosterSkeleton key={i} />)}
+      </div>
     </div>
   );
 }

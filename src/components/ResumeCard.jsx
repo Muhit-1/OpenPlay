@@ -7,6 +7,7 @@
 import { useNavigate } from 'react-router-dom';
 import { Play, GripVertical } from 'lucide-react';
 import { dragLinkProps } from '../lib/drag';
+import { FadeImg } from './ui';
 import { basename } from '../lib/text';
 import {
   episodeTag, episodeName, progressOf, timeLeft,
@@ -53,7 +54,7 @@ export default function ResumeCard({ group }) {
         style={{ background: 'var(--ink-800)', border: '1px solid var(--line)' }}
       >
         {lead.poster
-          ? <img src={lead.poster} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />
+          ? <FadeImg src={lead.poster} loading="lazy" className="w-full h-full object-cover" />
           : <Play size={18} style={{ color: 'var(--text-faint)' }} aria-hidden="true" />}
         <span className="resume-play" aria-hidden="true">
           <Play size={14} fill="currentColor" strokeWidth={0} />

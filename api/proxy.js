@@ -8,18 +8,10 @@
 
 import { fetchText } from './_lib/safe-fetch.js';
 import { preflight } from './_lib/http.js';
+import { srtToVtt } from '../shared/subtitles.js';
 
-export { fetchText };
-
-/** Convert SubRip to WebVTT. Browsers only accept VTT in a <track>. */
-export function srtToVtt(srt) {
-  const body = srt
-    .replace(/^\uFEFF/, '')          // strip BOM
-    .replace(/\r\n|\r/g, '\n')       // normalise line endings
-    .replace(/(\d{1,2}:\d{2}:\d{2}),(\d{1,3})/g, '$1.$2'); // 00:00:01,234 -> 00:00:01.234
-
-  return 'WEBVTT\n\n' + body.trim() + '\n';
-}
+// srtToVtt lives in shared/ so the browser can use it too (uploaded files).
+export { fetchText, srtToVtt };
 
 export default async function handler(req, res) {
   if (preflight(req, res)) return;

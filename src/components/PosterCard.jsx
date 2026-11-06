@@ -14,7 +14,7 @@ import { fetchMeta, fetchDirectory } from '../lib/tmdb';
 import { libraryKindFor } from '../lib/server';
 import { describeMedia, mediaSummary } from '../lib/playback';
 import { parseRelease } from '../lib/release';
-import { StatusChip, Rating } from './ui';
+import { StatusChip, Rating, FadeImg } from './ui';
 import { dragLinkProps } from '../lib/drag';
 
 export default function PosterCard({
@@ -95,7 +95,7 @@ function ServerCard({ file, compact, onOpen }) {
       topRight={<Rating value={meta?.rating} />}
       footer={
         <>
-          <p className="text-[13px] font-medium leading-tight truncate">{title}</p>
+          <p className="text-[14px] font-medium leading-tight truncate">{title}</p>
           <p className="data mt-1 truncate">
             {[meta?.year, mediaSummary(media)].filter(Boolean).join(' · ') || ' '}
           </p>
@@ -139,7 +139,7 @@ function CatalogCard({ item, compact, availability }) {
       }
       footer={
         <>
-          <p className="text-[13px] font-medium leading-tight truncate">{label}</p>
+          <p className="text-[14px] font-medium leading-tight truncate">{label}</p>
           <p className="data mt-1">{year || ' '}</p>
         </>
       }
@@ -155,6 +155,7 @@ function Frame({
   topLeft, topRight, bottomOverlay, footer,
 }) {
   const [broken, setBroken] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const ref = useRef(null);
 
   // A div, not a <button>: Firefox will not start a drag from a button.
@@ -180,13 +181,16 @@ function Frame({
         className={`poster-frame ${compact ? 'h-48' : 'video-card-poster'}`}
       >
         {poster && !broken ? (
-          <img
-            src={poster}
-            alt=""
-            loading="lazy"
-            onError={() => setBroken(true)}
-            className="w-full h-full object-cover"
-          />
+          <>
+            {!imgLoaded && <div className="skeleton absolute inset-0" aria-hidden="true" />}
+            <FadeImg
+              src={poster}
+              loading="lazy"
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setBroken(true)}
+              className="relative w-full h-full object-cover"
+            />
+          </>
         ) : loading ? (
           <div className="skeleton w-full h-full" />
         ) : (

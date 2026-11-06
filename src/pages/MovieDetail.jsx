@@ -13,7 +13,7 @@ import {
   ArrowLeft, Play, Download, Copy, Check, FolderOpen, Loader2, SearchX,
   Bookmark, BookmarkCheck, Building2, Clapperboard,
 } from 'lucide-react';
-import { StatusChip, Rating, Notice, EmptyState } from '../components/ui';
+import { StatusChip, Rating, Notice, EmptyState, FadeImg } from '../components/ui';
 import { fetchDetail } from '../lib/tmdb';
 import { findOnServer } from '../lib/server';
 import { describeMedia, mediaSummary, inspectPlayback } from '../lib/playback';
@@ -89,7 +89,7 @@ export default function MovieDetail() {
       {/* Backdrop */}
       <div className="relative h-[38vw] max-h-[430px] min-h-[220px] overflow-hidden">
         {backdrop ? (
-          <img src={backdrop} alt="" className="w-full h-full object-cover object-top" />
+          <FadeImg src={backdrop} className="w-full h-full object-cover object-top" />
         ) : (
           <div className="w-full h-full" style={{ background: 'var(--ink-900)' }} />
         )}
@@ -115,22 +115,21 @@ export default function MovieDetail() {
       <div className="relative -mt-24 sm:-mt-28 px-5 sm:px-7 pb-16 max-w-6xl">
         <div className="flex flex-col sm:flex-row gap-7">
           {poster && (
-            <img
+            <FadeImg
               src={poster}
-              alt=""
               className="hidden sm:block w-40 md:w-48 rounded-xl flex-shrink-0 self-start"
               style={{ border: '1px solid var(--line)', boxShadow: 'var(--shadow-card)' }}
             />
           )}
 
           <div className="flex-1 min-w-0 sm:pt-20">
-            <p className="eyebrow mb-2">{mediaType === 'tv' ? 'Series' : 'Film'}</p>
             <h1 className="font-display text-3xl md:text-4xl leading-[1.05] mb-3">{title}</h1>
             {tagline && (
               <p className="text-sm italic mb-4" style={{ color: 'var(--text-dim)' }}>{tagline}</p>
             )}
 
             <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mb-5 data">
+              <span>{mediaType === 'tv' ? 'Series' : 'Film'}</span>
               {year && <span>{year}</span>}
               {runtime && <span>{formatRuntime(runtime)}</span>}
               {seasons && <span>{seasons} season{seasons === 1 ? '' : 's'}</span>}
@@ -239,7 +238,7 @@ export default function MovieDetail() {
                     style={{ background: 'var(--ink-850)', border: '1px solid var(--line)' }}
                   >
                     {person.profile ? (
-                      <img src={person.profile} alt="" className="w-full h-full object-cover" loading="lazy" />
+                      <FadeImg src={person.profile} className="w-full h-full object-cover" loading="lazy" />
                     ) : (
                       <span
                         className="w-full h-full flex items-center justify-center font-display text-lg"

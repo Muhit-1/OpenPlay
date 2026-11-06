@@ -109,9 +109,9 @@ export default function Home() {
       {resume.length > 0 && (
         <section className="mb-9">
           <div className="flex items-end justify-between gap-4 mb-3.5 px-5 sm:px-7">
-            <div className="min-w-0">
-              <p className="eyebrow mb-1">Where you left off</p>
-              <h2 className="font-display text-lg leading-none truncate">Continue watching</h2>
+            <div className="min-w-0 flex items-baseline gap-3">
+              <h2 className="font-display text-xl leading-tight truncate">Continue watching</h2>
+              <span className="hidden sm:inline text-[13px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>where you left off</span>
             </div>
             <button
               onClick={() => navigate('/history')}
@@ -124,7 +124,7 @@ export default function Home() {
           </div>
 
           <div
-            className="grid gap-3.5 px-5 sm:px-7"
+            className="reveal-list grid gap-3.5 px-5 sm:px-7"
             style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(100%, 340px), 1fr))' }}
           >
             {resume.map(group => <ResumeCard key={group.key} group={group} />)}
@@ -152,14 +152,14 @@ export default function Home() {
       )}
 
       <Row
-        eyebrow="TMDB"
+        hint="TMDB"
         title="Trending films this week"
         items={trendingMovies}
         loading={tmdbLoading}
       />
 
       <Row
-        eyebrow="TMDB"
+        hint="TMDB"
         title="Trending series this week"
         items={trendingSeries}
         loading={tmdbLoading}
@@ -168,7 +168,7 @@ export default function Home() {
       {genreRows.map(row => (
         <Row
           key={row.key}
-          eyebrow="TMDB"
+          hint="TMDB"
           title={row.label}
           items={row.items}
           moreHref={`/channel/${encodeURIComponent(row.label)}?type=genre`}
@@ -317,7 +317,7 @@ function LibraryShelf({ library, navigate, eager = false }) {
   }
 
   if (titles === null) {
-    return <div ref={ref}><Row eyebrow="On your server" title={library.label} loading /></div>;
+    return <div ref={ref}><Row hint="on your server" title={library.label} loading /></div>;
   }
 
   if (titles.length === 0) return <div ref={ref} />;
@@ -325,7 +325,7 @@ function LibraryShelf({ library, navigate, eager = false }) {
   return (
     <div ref={ref}>
       <Row
-        eyebrow="On your server"
+        hint="on your server"
         title={library.label}
         files={titles}
         action={

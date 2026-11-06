@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, SearchX } from 'lucide-react';
 import PosterCard from '../components/PosterCard';
-import { PosterSkeleton, EmptyState } from '../components/ui';
+import { PosterSkeleton, EmptyState, FadeImg } from '../components/ui';
 import { fetchByGenre, fetchPerson, fetchPersonByName, fetchCompany } from '../lib/tmdb';
 import { useAsync } from '../lib/useAsync';
 import { safeDecode } from '../lib/text';
@@ -67,21 +67,18 @@ export default function Channel() {
       <header className="flex items-start justify-between flex-wrap gap-4 mb-8">
         <div className="flex items-center gap-4 min-w-0">
           {state.profile && (
-            <img
+            <FadeImg
               src={state.profile}
-              alt=""
               className="w-16 h-16 rounded-full object-cover flex-shrink-0"
               style={{ border: '1px solid var(--line)' }}
             />
           )}
           <div className="min-w-0">
-            <p className="eyebrow mb-1.5">{state.subtitle || type}</p>
             <h1 className="font-display text-3xl truncate">{state.heading}</h1>
-            {!loading && (
-              <p className="data mt-1.5">
-                {state.items.length} title{state.items.length === 1 ? '' : 's'}
-              </p>
-            )}
+            <p className="data mt-1.5">
+              {[state.subtitle || type, !loading && `${state.items.length} title${state.items.length === 1 ? '' : 's'}`]
+                .filter(Boolean).join(' \u00b7 ')}
+            </p>
           </div>
         </div>
 
