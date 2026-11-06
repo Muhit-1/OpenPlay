@@ -97,6 +97,17 @@ Ratings are TMDB's, not IMDb's, and "top rated" only counts titles with enough
 votes for the number to mean something. Titles TMDB cannot match have no genre or
 rating, so any filter leaves them out (they still appear unfiltered).
 
+### Pick up where you left off
+
+Everything you set on Movies, Series and Animation — filters, sort, search text,
+page — lives in the address bar. Open a title and press Back, reload, or copy the
+link: you land on the same view, **at the same scroll position**.
+
+Clicking a title opens a **side panel** (poster, rating, genres, summary, cast,
+trailer, Play) while the list stays put. **Ctrl/Cmd-click or middle-click** a
+title to open its full page in a new tab; "Open full page" in the panel does the
+same. `Esc` closes the panel, and Back closes it too.
+
 ### Search that covers both
 
 One box searches TMDB **and** your server. Search a title to see whether it

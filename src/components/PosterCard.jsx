@@ -7,83 +7,47 @@
 //   <PosterCard file={...}>   a file or folder on the server
 //   <PosterCard item={...}>   a TMDB title, which may or may not be on the server
 
-import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { Play, Folder, Film, Info, GripVertical } from 'lucide-react';
-import { fetchMeta, fetchDirectory } from '../lib/tmdb';
-import { libraryKindFor } from '../lib/server';
+import { useServerTitle } from '../lib/useServerTitle';
+import { titleHref } from '../lib/titleLink';
 import { describeMedia, mediaSummary } from '../lib/playback';
 import { parseRelease } from '../lib/release';
 import { StatusChip, Rating, FadeImg } from './ui';
 import { dragLinkProps } from '../lib/drag';
 
+/**
+ * `onOpen(file)` replaces what a plain left-click does (the Library opens a side
+ * panel). Ctrl/Cmd/Shift/middle-click and "open in new tab" still follow the
+ * card's real address.
+ */
 export default function PosterCard({
-  file, item, compact = false, availability, onOpen,
+  file, item, compact = false, availability, onOpen, selected = false,
 }) {
   return file
-    ? <ServerCard file={file} compact={compact} onOpen={onOpen} />
+    ? <ServerCard file={file} compact={compact} onOpen={onOpen} selected={selected} />
     : <CatalogCard item={item} compact={compact} availability={availability} />;
 }
 
 /* ── A file or folder that exists on the server ──────────────────────────── */
 
-function ServerCard({ file, compact, onOpen }) {
-  const navigate = useNavigate();
-  const [meta, setMeta] = useState(null);
-  const [videoUrl, setVideoUrl] = useState(file.type === 'video' ? file.url : null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let live = true;
-
-    (async () => {
-      setLoading(true);
-      try {
-        let lookupName = file.name;
-
-        // A folder holding exactly one video is really just that video.
-        if (file.type === 'folder') {
-          const data = await fetchDirectory(file.url);
-          const videos = data.files.filter(f => f.type === 'video');
-          if (live && videos.length === 1) {
-            setVideoUrl(videos[0].url);
-            lookupName = videos[0].name;
-          }
-        }
-
-        const m = await fetchMeta(lookupName, libraryKindFor(file.url));
-        if (live && m?.found) setMeta(m);
-      } catch { /* a card without metadata still works */ }
-      finally { if (live) setLoading(false); }
-    })();
-
-    return () => { live = false; };
-  }, [file.url, file.name, file.type]);
+function ServerCard({ file, compact, onOpen, selected }) {
+  const { meta, videoUrl, loading } = useServerTitle(file);
 
   const media = describeMedia(videoUrl || file.name);
   const title = meta?.title || parseRelease(file.name).title || cleanName(file.name);
 
-  const open = () => {
-    if (onOpen) return onOpen(file);
-    // Show the title's info page first (poster, cast, trailer); playing starts
-    // from there. Without a TMDB match, fall back to opening the file directly.
-    if (meta?.id) {
-      navigate(`/detail/${meta.id}?type=${meta.type === 'tv' ? 'tv' : 'movie'}`);
-    } else if (videoUrl) {
-      navigate(`/watch/${encodeURIComponent(videoUrl)}`, {
-        state: { file: { ...file, url: videoUrl }, meta },
-      });
-    } else {
-      navigate(`/browse?url=${encodeURIComponent(file.url)}`);
-    }
-  };
+  const href = titleHref(file, meta, videoUrl);
 
   const isPlayable = !!videoUrl;
 
   return (
     <Frame
       compact={compact}
-      onClick={open}
+      href={href}
+      onActivate={onOpen ? () => onOpen(file) : undefined}
+      selected={selected}
       title={title}
       poster={meta?.poster}
       loading={loading}
@@ -107,9 +71,7 @@ function ServerCard({ file, compact, onOpen }) {
 
 /* ── A TMDB title, which may or may not be on the server ─────────────────── */
 
-function CatalogCard({ item, compact, availability }) {
-  const navigate = useNavigate();
-  const { id, title, name, year, rating, poster, type } = item;
+function CatalogCard({ item, compact, availability }) {  const { id, title, name, year, rating, poster, type } = item;
   const label = title || name || '';
   const mediaType = type === 'tv' ? 'tv' : 'movie';
 
@@ -119,7 +81,7 @@ function CatalogCard({ item, compact, availability }) {
   return (
     <Frame
       compact={compact}
-      onClick={() => navigate(`/detail/${id}?type=${mediaType}`)}
+      href={{ pathname: `/detail/${id}`, search: `?type=${mediaType}` }}
       title={label}
       poster={poster}
       unavailable={unavailable}
@@ -150,7 +112,7 @@ function CatalogCard({ item, compact, availability }) {
 /* ── Shared frame ────────────────────────────────────────────────────────── */
 
 function Frame({
-  compact, onClick, title, poster, loading, unavailable, dragUrl, dragLabel,
+  compact, href, onActivate, selected, title, poster, loading, unavailable, dragUrl, dragLabel,
   fallbackIcon: Fallback, overlayIcon: Overlay, overlayLabel,
   topLeft, topRight, bottomOverlay, footer,
 }) {
@@ -158,23 +120,26 @@ function Frame({
   const [imgLoaded, setImgLoaded] = useState(false);
   const ref = useRef(null);
 
-  // A div, not a <button>: Firefox will not start a drag from a button.
-  const onKeyDown = e => {
-    if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
-      e.preventDefault();
-      onClick();
-    }
+  // A plain left-click can be taken over (the Library opens a side panel);
+  // anything else — Ctrl/Cmd/Shift/middle-click, "open in new tab" — is left to
+  // the browser, which follows the real address.
+  const handleClick = e => {
+    if (!onActivate || e.defaultPrevented) return;
+    if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    onActivate();
   };
 
   return (
-    <div
+    <Link
       ref={ref}
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={onKeyDown}
+      to={href}
+      state={href.state}
+      onClick={handleClick}
       title={title}
-      className={`card-link flex-shrink-0 text-left cursor-pointer ${compact ? 'w-32' : 'video-card'} ${unavailable ? 'card-unavailable' : ''}`}
+      aria-current={selected ? 'true' : undefined}
+      className={`card-link block no-underline flex-shrink-0 text-left cursor-pointer ${compact ? 'w-32' : 'video-card'} ${unavailable ? 'card-unavailable' : ''} ${selected ? 'card-selected' : ''}`}
+      style={{ color: 'inherit' }}
       {...dragLinkProps(dragUrl, dragLabel)}
     >
       <div
@@ -236,7 +201,7 @@ function Frame({
       </div>
 
       <div className="pt-2.5 px-0.5">{footer}</div>
-    </div>
+    </Link>
   );
 }
 

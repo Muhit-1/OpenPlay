@@ -7,9 +7,14 @@
 // those buckets as cards — you clicked "TV Series ♦ M — R" and got a filing
 // cabinet. Here the buckets become filters (library, year or letters, sort) and
 // the grid is always media.
+//
+// The whole view lives in the address (see lib/libraryParams.js): filters, sort,
+// page and the open title. Back, reload and a copied link all return to it, and
+// scroll position is restored too. Left-click opens a side panel; Ctrl/Cmd or
+// middle-click opens the title's page in a new tab.
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { ServerOff, FolderOpen, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import PosterCard from '../components/PosterCard';
 import { PosterSkeleton, EmptyState, Notice } from '../components/ui';
@@ -20,6 +25,10 @@ import { parseRelease } from '../lib/release';
 import { useCatalog } from '../lib/useCatalog';
 import { queryCatalog, facets, needsIndex, RATINGS, YEARS, SORTS } from '../lib/catalog-query';
 import { languageName } from '../lib/genres';
+import { readView, patchParams, scrollKey } from '../lib/libraryParams';
+import { useScrollMemory } from '../lib/useScrollMemory';
+import { safeDecode } from '../lib/text';
+import PreviewPanel from '../components/PreviewPanel';
 
 // Each card resolves its own TMDB metadata, so rendering a 700-title section in
 // one go would fire 700 lookups. Paging keeps that to a screenful at a time.
@@ -54,17 +63,37 @@ export default function Library({ category }) {
     { titles: [], error: null }
   );
 
-  const [filter, setFilter] = useState('');
-  const [sort, setSort] = useState(() => {
-    const wanted = params.get('sort');
-    return SORTS.some(o => o.key === wanted) ? wanted : 'server';
-  });
-  const [genre, setGenre] = useState(null);
-  const [minRating, setMinRating] = useState(0);
-  const [year, setYear] = useState('all');
-  const [language, setLanguage] = useState(null);
-  const [quals, setQuals] = useState(() => new Set());
-  const [page, setPage] = useState(1);
+  // The view comes from the address; every change writes back to it (replacing the
+  // history entry, so Back leaves the page instead of stepping through filters).
+  const view = readView(params);
+  const { filter, sort, quals, genre, minRating, year, language, page } = view;
+
+  const update = useCallback(
+    patch => setParams(prev => patchParams(prev, patch), { replace: true }),
+    [setParams]
+  );
+  const setFilter    = v => update({ q: v });
+  const setSort      = v => update({ sort: v });
+  const setGenre     = v => update({ g: v });
+  const setMinRating = v => update({ r: v });
+  const setYear      = v => update({ y: v });
+  const setLanguage  = v => update({ l: v });
+  const setQuals     = v => update({ qual: typeof v === 'function' ? v(quals) : v });
+  const setPage      = v => update({ p: v });
+
+  // Typing edits a local draft and reaches the address a moment later, so the
+  // input never fights the router for the caret.
+  const [draft, setDraft] = useState(null);
+  const draftTimer = useRef(0);
+  const onTextChange = e => {
+    const value = e.target.value;
+    setDraft(value);
+    clearTimeout(draftTimer.current);
+    draftTimer.current = setTimeout(() => { update({ q: value }); setDraft(null); }, 220);
+  };
+  useEffect(() => () => clearTimeout(draftTimer.current), []);
+  const shownText = draft ?? filter;
+
   const filterInput = useRef(null);
 
   // What TMDB says about every title here: genres, rating, year, language.
@@ -85,14 +114,6 @@ export default function Library({ category }) {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
-
-  // Reset paging whenever the slice being viewed changes.
-  const viewKey = `${libKey}|${section?.key}|${filter}|${sort}|${[...quals].join()}|${genre}|${minRating}|${year}|${language}`;
-  const [lastViewKey, setLastViewKey] = useState(viewKey);
-  if (viewKey !== lastViewKey) {
-    setLastViewKey(viewKey);
-    setPage(1);
-  }
 
   // Resolutions present in what is being shown, read from the release names.
   const resolutionSource = wholeLibrary ? catalog.records : slice.titles;
@@ -138,15 +159,12 @@ export default function Library({ category }) {
     ? catalog.records.length === 0 && indexingNow
     : indexLoading || titlesLoading;
 
-  const resetFilters = () => {
-    setParams({}); setFilter(''); setSort('server'); setQuals(new Set());
-    setGenre(null); setMinRating(0); setYear('all'); setLanguage(null);
-  };
+  const resetFilters = () => { setParams({}, { replace: true }); setDraft(null); };
   const activeTags = [
     libraries[0] && library && library.key !== libraries[0].key
-      ? { key: 'lib', label: library.label, clear: () => setParams({}) } : null,
+      ? { key: 'lib', label: library.label, clear: () => setParams({}, { replace: true }) } : null,
     section && index.sections[0] && section.key !== index.sections[0].key
-      ? { key: 'section', label: section.label, clear: () => setParams({ lib: libKey }) } : null,
+      ? { key: 'section', label: section.label, clear: () => setParams({ lib: libKey }, { replace: true }) } : null,
     filter.trim()
       ? { key: 'q', label: `\u201c${filter.trim()}\u201d`, clear: () => setFilter('') } : null,
     sort !== 'server'
@@ -167,6 +185,39 @@ export default function Library({ category }) {
     return next;
   });
 
+  // ── The title panel ──
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  // A plain lookup each render: the list is small and this runs once per change.
+  let selectedFile = null;
+  if (view.item) {
+    const known = matching.find(f => f.url === view.item)
+      || slice.titles.find(f => f.url === view.item)
+      || catalog.records.find(r => r.url === view.item);
+    selectedFile = known
+      ? { name: known.name, url: known.url, type: known.fileType || known.type }
+      // a copied link to a title the current list does not show
+      : { name: safeDecode(view.item.replace(/\/+$/, '').split('/').pop() || ''),
+          url: view.item, type: view.item.endsWith('/') ? 'folder' : 'video' };
+  }
+
+  const openItem = useCallback(file => {
+    // Opening pushes an entry, so Back closes the panel; switching titles replaces it.
+    setParams(
+      prev => patchParams(prev, { item: file.url }),
+      { replace: !!params.get('item'), state: { panel: true } }
+    );
+  }, [setParams, params]);
+
+  const closeItem = useCallback(() => {
+    if (location.state?.panel) navigate(-1);       // undo the entry we pushed
+    else update({ item: null });
+  }, [location.state, navigate, update]);
+
+  // Back to the same place on the page, not the top of the list.
+  useScrollMemory(scrollKey(location.pathname, params), !loading && visible.length > 0);
+
   if (libraries.length === 0) {
     return (
       <EmptyState
@@ -178,7 +229,7 @@ export default function Library({ category }) {
   }
 
   return (
-    <div className="page-enter px-5 sm:px-7 py-7">
+    <div className={`page-enter px-5 sm:px-7 py-7 ${selectedFile ? 'has-preview' : ''}`}>
       <header className="mb-6">
         <h1 className="font-display text-[34px] leading-[1.1]">{HEADINGS[category] || 'Library'}</h1>
         <p className="mt-1.5" style={{ color: 'var(--text-dim)' }}>
@@ -196,13 +247,13 @@ export default function Library({ category }) {
             <input
               ref={filterInput}
               type="search"
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
+              value={shownText}
+              onChange={onTextChange}
               placeholder="Filter these titles"
               aria-label="Filter titles"
               aria-keyshortcuts="F"
             />
-            {!filter && <kbd className="kbd hidden sm:inline-grid" aria-hidden="true">F</kbd>}
+            {!shownText && <kbd className="kbd hidden sm:inline-grid" aria-hidden="true">F</kbd>}
           </label>
         )}
 
@@ -220,7 +271,7 @@ export default function Library({ category }) {
                   key={lib.key}
                   selected={lib.key === library.key}
                   dot={lib.online !== false}
-                  onClick={() => { setParams({ lib: lib.key }); close(); }}
+                  onClick={() => { setParams({ lib: lib.key }, { replace: true }); close(); }}
                 >
                   {lib.label}
                   {lib.online === false && <span className="data ml-2">offline</span>}
@@ -239,7 +290,7 @@ export default function Library({ category }) {
               <SectionPicker
                 sections={index.sections}
                 activeKey={section?.key}
-                onPick={key => { setParams({ lib: libKey, s: key }); close(); }}
+                onPick={key => { setParams({ lib: libKey, s: key }, { replace: true }); close(); }}
               />
             )}
           </FilterMenu>
@@ -364,7 +415,14 @@ export default function Library({ category }) {
       ) : (
         <>
           <div className="reveal-list flex flex-wrap gap-4">
-            {visible.map(file => <PosterCard key={file.url} file={file} />)}
+            {visible.map(file => (
+              <PosterCard
+                key={file.url}
+                file={file}
+                selected={file.url === view.item}
+                onOpen={openItem}
+              />
+            ))}
           </div>
 
           {pageCount > 1 && (
@@ -391,6 +449,9 @@ export default function Library({ category }) {
             </nav>
           )}
         </>
+      )}
+      {selectedFile && (
+        <PreviewPanel key={selectedFile.url} file={selectedFile} onClose={closeItem} />
       )}
     </div>
   );

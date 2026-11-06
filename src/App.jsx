@@ -1,6 +1,6 @@
 // src/App.jsx
-import { lazy, Suspense, useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { lazy, Suspense, useState, useEffect, useRef } from 'react';
+import { BrowserRouter, Routes, Route, useLocation, useNavigationType } from 'react-router-dom';
 import { Rail, TopBar } from './components/Nav';
 import Home        from './pages/Home';
 const Library = lazy(() => import('./pages/Library'));
@@ -25,6 +25,26 @@ export default function App() {
   );
 }
 
+/**
+ * A new page opens at its top. (Back/Forward are left alone: the Library
+ * restores its own scroll position, and the browser handles the rest.)
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const navType = useNavigationType();
+  const lastPath = useRef(pathname);
+
+  // Only a change of page counts: opening the Library's side panel or changing a
+  // filter is a navigation too, and must not throw the list back to the top.
+  useEffect(() => {
+    if (lastPath.current === pathname) return;
+    lastPath.current = pathname;
+    if (navType !== 'POP') window.scrollTo(0, 0);
+  }, [pathname, navType]);
+
+  return null;
+}
+
 function Shell() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => getItem('rail_collapsed') === '1');
@@ -42,6 +62,7 @@ function Shell() {
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--ink-950)' }}>
+      <ScrollToTop />
       <Rail
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
