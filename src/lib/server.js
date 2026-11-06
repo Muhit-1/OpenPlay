@@ -99,9 +99,9 @@ export function libraryCategoryFor(url) {
   return lib ? (lib.category || inferCategory(lib)) : null;
 }
 
-/** Libraries in one section of the navigation. */
+/** Libraries in one section of the navigation (those switched off in Settings are left out). */
 export function librariesFor(category) {
-  return getLibraries().filter(lib => (lib.category || inferCategory(lib)) === category);
+  return getLibraries().filter(lib => lib.enabled !== false && (lib.category || inferCategory(lib)) === category);
 }
 
 /** Built-in entries predate the category field; derive it from the label. */

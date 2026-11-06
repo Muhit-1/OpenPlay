@@ -8,7 +8,7 @@
 // cabinet. Here the buckets become filters (library, year or letters, sort) and
 // the grid is always media.
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { ServerOff, FolderOpen, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import PosterCard from '../components/PosterCard';
@@ -53,29 +53,52 @@ export default function Library({ category }) {
 
   const [filter, setFilter] = useState('');
   const [sort, setSort] = useState('server');
+  const [quals, setQuals] = useState(() => new Set());
   const [page, setPage] = useState(1);
+  const filterInput = useRef(null);
+
+  // "F" jumps to the title filter.
+  useEffect(() => {
+    const onKey = e => {
+      if ((e.key !== 'f' && e.key !== 'F') || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      e.preventDefault();
+      filterInput.current?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
 
   // Reset paging whenever the slice being viewed changes.
-  const viewKey = `${libKey}|${section?.key}|${filter}|${sort}`;
+  const viewKey = `${libKey}|${section?.key}|${filter}|${sort}|${[...quals].join()}`;
   const [lastViewKey, setLastViewKey] = useState(viewKey);
   if (viewKey !== lastViewKey) {
     setLastViewKey(viewKey);
     setPage(1);
   }
 
+  // Resolutions present in this slice, read from the release names.
+  const resolutions = useMemo(() => {
+    const found = new Set();
+    for (const t of slice.titles) { const r = resolutionOf(t.name); if (r) found.add(r); }
+    return [...found].sort((a, b) => RESOLUTION_ORDER.indexOf(a) - RESOLUTION_ORDER.indexOf(b));
+  }, [slice.titles]);
+
   const matching = useMemo(() => {
     const needle = filter.trim().toLowerCase();
-    const found = !needle ? slice.titles : slice.titles.filter(t =>
+    let found = !needle ? slice.titles : slice.titles.filter(t =>
       t.name.toLowerCase().includes(needle) ||
       parseRelease(t.name).title.toLowerCase().includes(needle)
     );
+    if (quals.size) found = found.filter(t => quals.has(resolutionOf(t.name)));
     if (sort === 'server') return found;
 
     const label = t => parseRelease(t.name).title || t.name;
     return [...found].sort((a, b) =>
       label(a).localeCompare(label(b), undefined, { numeric: true, sensitivity: 'base' })
     );
-  }, [slice.titles, filter, sort]);
+  }, [slice.titles, filter, sort, quals]);
 
   const pageCount = Math.max(1, Math.ceil(matching.length / PER_PAGE));
   const current = Math.min(page, pageCount);
@@ -83,7 +106,7 @@ export default function Library({ category }) {
 
   const loading = indexLoading || titlesLoading;
 
-  const resetFilters = () => { setParams({}); setFilter(''); setSort('server'); };
+  const resetFilters = () => { setParams({}); setFilter(''); setSort('server'); setQuals(new Set()); };
   const activeTags = [
     libraries[0] && library && library.key !== libraries[0].key
       ? { key: 'lib', label: library.label, clear: () => setParams({}) } : null,
@@ -93,7 +116,17 @@ export default function Library({ category }) {
       ? { key: 'q', label: `\u201c${filter.trim()}\u201d`, clear: () => setFilter('') } : null,
     sort !== 'server'
       ? { key: 'sort', label: SORTS.find(o => o.key === sort).label, clear: () => setSort('server') } : null,
+    ...[...quals].map(q => ({
+      key: `q-${q}`, label: q,
+      clear: () => setQuals(prev => { const next = new Set(prev); next.delete(q); return next; }),
+    })),
   ].filter(Boolean);
+
+  const toggleQual = q => setQuals(prev => {
+    const next = new Set(prev);
+    if (next.has(q)) next.delete(q); else next.add(q);
+    return next;
+  });
 
   if (libraries.length === 0) {
     return (
@@ -108,30 +141,61 @@ export default function Library({ category }) {
   return (
     <div className="page-enter px-5 sm:px-7 py-7">
       <header className="mb-6">
-        <p className="eyebrow mb-2">On your server</p>
-        <h1 className="font-display text-3xl">{HEADINGS[category] || 'Library'}</h1>
+        <h1 className="font-display text-[34px] leading-[1.1]">{HEADINGS[category] || 'Library'}</h1>
+        <p className="mt-1.5" style={{ color: 'var(--text-dim)' }}>
+          {library.label}
+          {!loading && !index.error ? ` \u00b7 ${matching.length} title${matching.length === 1 ? '' : 's'}` : ''}
+          {section && index.sections.length > 1 ? ` \u00b7 ${section.label}` : ''}
+        </p>
       </header>
 
       {/* Library, year (or letters) and sort are filters, not rows of buttons */}
       <div className="flex flex-wrap items-center gap-2.5 mb-3">
+        {!loading && !index.error && slice.titles.length > 0 && (
+          <label className="well flex-1 min-w-[220px] max-w-[380px]">
+            <Search size={17} className="well-icon" aria-hidden="true" />
+            <input
+              ref={filterInput}
+              type="search"
+              value={filter}
+              onChange={e => setFilter(e.target.value)}
+              placeholder="Filter these titles"
+              aria-label="Filter titles"
+              aria-keyshortcuts="F"
+            />
+            {!filter && <kbd className="kbd hidden sm:inline-grid" aria-hidden="true">F</kbd>}
+          </label>
+        )}
+
         {libraries.length > 1 && (
-          <FilterMenu label="Library" value={library.label}>
-            {({ close }) => libraries.map(lib => (
-              <MenuItem
-                key={lib.key}
-                selected={lib.key === library.key}
-                dot={lib.online !== false}
-                onClick={() => { setParams({ lib: lib.key }); close(); }}
-              >
-                {lib.label}
-                {lib.online === false && <span className="data ml-2">offline</span>}
-              </MenuItem>
-            ))}
+          <FilterMenu
+            label="Library"
+            value={library.label}
+            active={libraries[0] && library.key !== libraries[0].key}
+            searchable={libraries.length > 8 ? 'Find a library' : undefined}
+          >
+            {({ close, query }) => libraries
+              .filter(lib => !query || lib.label.toLowerCase().includes(query.toLowerCase()))
+              .map(lib => (
+                <MenuItem
+                  key={lib.key}
+                  selected={lib.key === library.key}
+                  dot={lib.online !== false}
+                  onClick={() => { setParams({ lib: lib.key }); close(); }}
+                >
+                  {lib.label}
+                  {lib.online === false && <span className="data ml-2">offline</span>}
+                </MenuItem>
+              ))}
           </FilterMenu>
         )}
 
         {index.sections.length > 1 && (
-          <FilterMenu label={index.shape === 'years' ? 'Year' : 'Section'} value={section?.label || ''}>
+          <FilterMenu
+            label={index.shape === 'years' ? 'Year' : 'Section'}
+            value={section?.label || ''}
+            active={section && index.sections[0] && section.key !== index.sections[0].key}
+          >
             {({ close }) => (
               <SectionPicker
                 sections={index.sections}
@@ -142,38 +206,33 @@ export default function Library({ category }) {
           </FilterMenu>
         )}
 
-        <FilterMenu label="Sort" value={SORTS.find(o => o.key === sort).label}>
-          {({ close }) => SORTS.map(o => (
-            <MenuItem key={o.key} selected={o.key === sort} onClick={() => { setSort(o.key); close(); }}>
-              {o.label}
-            </MenuItem>
-          ))}
-        </FilterMenu>
-
-        {!loading && !index.error && slice.titles.length > 0 && (
-          <>
-            <div className="control flex items-center gap-2 px-3 h-10 flex-1 min-w-[200px] max-w-sm">
-              <Search size={15} style={{ color: 'var(--text-dim)' }} aria-hidden="true" />
-              <input
-                type="search"
-                value={filter}
-                onChange={e => setFilter(e.target.value)}
-                placeholder="Filter these titles"
-                aria-label="Filter titles"
-                className="flex-1 bg-transparent text-[14.5px] outline-none min-w-0"
-              />
-            </div>
-
-            <p className="data sm:ml-auto">
-              {matching.length} title{matching.length === 1 ? '' : 's'}
-              {section && index.sections.length > 1 ? ` · ${section.label}` : ''}
-            </p>
-          </>
+        {resolutions.length > 1 && (
+          <FilterMenu
+            label="Quality"
+            value={quals.size === 0 ? 'Any' : quals.size > 2 ? `${quals.size} selected` : [...quals].join(', ')}
+            active={quals.size > 0}
+            footer="Pick as many as you like"
+            onClear={() => setQuals(new Set())}
+          >
+            {() => resolutions.map(r => (
+              <MenuItem key={r} check selected={quals.has(r)} onClick={() => toggleQual(r)}>{r}</MenuItem>
+            ))}
+          </FilterMenu>
         )}
+
+        <div className="sm:ml-auto">
+          <FilterMenu label="Sort" value={SORTS.find(o => o.key === sort).label} active={sort !== 'server'} right>
+            {({ close }) => SORTS.map(o => (
+              <MenuItem key={o.key} selected={o.key === sort} onClick={() => { setSort(o.key); close(); }}>
+                {o.label}
+              </MenuItem>
+            ))}
+          </FilterMenu>
+        </div>
       </div>
 
       {activeTags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 mb-5">
+        <div className="flex flex-wrap items-center gap-2 mt-4 mb-6">
           {activeTags.map(tag => (
             <span key={tag.key} className="filter-tag">
               {tag.label}
@@ -203,7 +262,7 @@ export default function Library({ category }) {
       )}
 
       {loading ? (
-        <div className="flex flex-wrap gap-4">
+        <div className="reveal-list flex flex-wrap gap-4">
           {Array.from({ length: 18 }, (_, i) => <PosterSkeleton key={i} />)}
         </div>
       ) : matching.length === 0 && !index.error ? (
@@ -214,7 +273,7 @@ export default function Library({ category }) {
         />
       ) : (
         <>
-          <div className="flex flex-wrap gap-4">
+          <div className="reveal-list flex flex-wrap gap-4">
             {visible.map(file => <PosterCard key={file.url} file={file} />)}
           </div>
 
@@ -247,6 +306,18 @@ export default function Library({ category }) {
   );
 }
 
+const RESOLUTION_ORDER = ['4K', '1080p', '720p', '576p', '480p'];
+
+/** "1080p" | "720p" | "4K" | null, from the release name. */
+function resolutionOf(name) {
+  const r = (parseRelease(name).resolution || '').toLowerCase();
+  if (!r) return null;
+  if (r === '2160p' || r === '4k' || r === 'uhd') return '4K';
+  if (r === '1080i') return '1080p';
+  if (r === 'fhd') return '1080p';
+  return r;
+}
+
 const SORTS = [
   { key: 'server', label: 'Server order' },
   { key: 'az',     label: 'Title A\u2013Z' },
@@ -269,7 +340,7 @@ function SectionPicker({ sections, activeKey, onPick }) {
   }
 
   return (
-    <div className="grid grid-cols-4 gap-1 p-0.5" style={{ width: 288 }}>
+    <div className="year-grid">
       {sections.map(s => (
         <button
           key={s.key}
@@ -277,12 +348,7 @@ function SectionPicker({ sections, activeKey, onPick }) {
           role="option"
           aria-selected={s.key === activeKey}
           onClick={() => onPick(s.key)}
-          className={`h-9 rounded-lg mono text-[14px] transition-colors ${isShort(s) ? '' : 'col-span-4 text-left px-3'}`}
-          style={{
-            background: s.key === activeKey ? 'var(--accent)' : 'transparent',
-            color: s.key === activeKey ? 'var(--accent-ink)' : 'var(--text-soft)',
-            fontWeight: s.key === activeKey ? 600 : 400,
-          }}
+          className={isShort(s) ? '' : 'is-wide'}
         >
           {s.label}
         </button>

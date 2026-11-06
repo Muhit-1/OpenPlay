@@ -8,7 +8,7 @@ import PosterCard from './PosterCard';
 import { PosterSkeleton } from './ui';
 
 export default function Row({
-  title, eyebrow, files = [], folders = [], items = [],
+  title, hint, files = [], folders = [], items = [],
   loading = false, moreHref, availability = {}, onFolderClick, action,
 }) {
   const track = useRef(null);
@@ -47,9 +47,11 @@ export default function Row({
   return (
     <section className="mb-9">
       <div className="flex items-end justify-between gap-4 mb-3.5 px-5 sm:px-7">
-        <div className="min-w-0">
-          {eyebrow && <p className="eyebrow mb-1">{eyebrow}</p>}
-          <h2 className="font-display text-lg leading-none truncate">{title}</h2>
+        <div className="min-w-0 flex items-baseline gap-3">
+          <h2 className="font-display text-xl leading-tight truncate">{title}</h2>
+          {hint && (
+            <span className="hidden sm:inline text-[13px] flex-shrink-0" style={{ color: 'var(--text-faint)' }}>{hint}</span>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 flex-shrink-0">
@@ -69,7 +71,7 @@ export default function Row({
         </div>
       </div>
 
-      <div ref={track} className="row-track px-5 sm:px-7 pb-1">
+      <div ref={track} className="row-track reveal-list px-5 sm:px-7 pb-1">
         {loading && Array.from({ length: 8 }, (_, i) => <PosterSkeleton key={`s${i}`} />)}
 
         {folders.map(folder => (

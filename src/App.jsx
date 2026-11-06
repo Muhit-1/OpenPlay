@@ -1,5 +1,5 @@
 // src/App.jsx
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { Rail, TopBar } from './components/Nav';
 import Home        from './pages/Home';
@@ -14,7 +14,8 @@ const MovieDetail = lazy(() => import('./pages/MovieDetail'));
 import { useTheme } from './lib/theme';
 import ErrorBoundary from './components/ErrorBoundary';
 import TmdbBanner from './components/TmdbBanner';
-import { Spinner } from './components/ui';
+import { PageSkeleton } from './components/ui';
+import { getItem, setItem } from './lib/storage';
 
 export default function App() {
   return (
@@ -26,19 +27,35 @@ export default function App() {
 
 function Shell() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState(() => getItem('rail_collapsed') === '1');
   useTheme();
+
+  // The rail's width is a CSS variable on <html>, so the page can follow it.
+  useEffect(() => {
+    document.documentElement.dataset.rail = collapsed ? 'collapsed' : 'expanded';
+  }, [collapsed]);
+
+  const toggleCollapsed = () => setCollapsed(prev => {
+    setItem('rail_collapsed', prev ? '0' : '1');
+    return !prev;
+  });
 
   return (
     <div className="min-h-screen" style={{ background: 'var(--ink-950)' }}>
-      <Rail open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <Rail
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        collapsed={collapsed}
+        onToggleCollapsed={toggleCollapsed}
+      />
 
-      <div className="lg:pl-[var(--rail-width)] flex flex-col min-h-screen">
+      <div className="shell-main flex flex-col min-h-screen">
         <TopBar onOpenMenu={() => setMenuOpen(true)} />
 
         <main className="flex-1" id="main">
           <TmdbBanner />
           <ErrorBoundary>
-          <Suspense fallback={<div className="flex justify-center py-24"><Spinner /></div>}>
+          <Suspense fallback={<PageSkeleton />}>
           <Routes>
             <Route path="/"          element={<Home />} />
 

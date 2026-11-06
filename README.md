@@ -107,12 +107,59 @@ When the browser genuinely can't cope — an unsupported codec, an audio track i
 can't switch to, subtitles baked into the file — there is a **Play in VLC**
 button that hands the stream straight over.
 
+### Watching a series
+
+The player keeps the whole show beside the video: every season of it, with
+episode stills, what you have already watched, and a marker on the one that is
+playing. Pick another episode without leaving the page, or let **Play next
+automatically** roll on when one ends (an "Up next" card gives you a last chance
+to cancel). Hide the list when you want the video wider; OpenPlay remembers.
+
+**Continue watching** shows one card per show or film — the latest episode, how
+far in you are, and how many others you have started — not one poster per
+episode. **History** can be filtered to Movies, Series or Animation, searched,
+and folded so a binged show is a single entry.
+
+### Subtitles, found for you
+
+Press the **CC** button in the player. OpenPlay already knows which show and
+episode (or film) is playing, so it asks [OpenSubtitles](https://www.opensubtitles.com)
+for subtitles in the language you pick and lists them best first — ranked by how
+closely each one's release name matches your file (`1080p AMZN WEBRip x265
+Silence`), so the top pick is usually in sync. One click and they play in the
+browser; nothing to download or upload by hand.
+
+- Subtitles that sit next to the video file (`.srt` / `.vtt`) are listed too
+- **Add a subtitle file** from your computer when you have your own
+- **Timing** nudges a subtitle half a second earlier or later, and is remembered per episode
+- Choose caption size and whether text sits on a dark background
+- Subtitles are fetched through your own OpenPlay server, which keeps the API key
+  private and caches results to save your daily download allowance
+
+Set it up with `OPENSUBTITLES_API_KEY` (and your account login) — see
+[Configure](#configure). Without a key the button still works for subtitle files
+and uploads, and tells you what to add. Subtitles built into the video file
+(common in `.mkv`) and extra audio tracks cannot be read by any browser; use
+**Play in VLC** for those.
+
+### Drag to VLC
+
+Anything with a file behind it — a poster, an episode row, a history entry, the
+video itself — can be dragged straight onto a VLC window. The drag carries the
+file's direct link, so VLC plays it from your server. Look for the small
+**Drag to VLC** label on hover.
+
 ### The rest
 
-- Custom player: hover-preview scrubber, skip, speed, volume, fullscreen, keyboard shortcuts
+- Custom player: hover-preview scrubber, skip, speed, volume, fullscreen, keyboard shortcuts (`N` for the next episode)
+- Library pages filter by library, year (or letters), quality and sort, with a title filter (`F`), instead of rows of buttons. Filters that are narrowing the list light up, and show as removable tags
+- **Search** (`/` from anywhere) opens a palette: recent searches and places to jump to, then live TMDB suggestions as you type, all with the arrow keys
+- The sidebar folds to an icon rail (the button at its foot, or `[`); OpenPlay remembers which you prefer
+- **Settings** are grouped into Server, Libraries, Playback, Subtitles, Appearance, VLC and helper, and Data, with a search box. Appearance and playback choices apply at once; server changes wait for **Save changes**. Libraries can be switched off without being removed
 - Watch progress and resume, plus History and a Watchlist
 - Raw directory browser, for when you want to see the filesystem as it is
 - Eight accent colours, three poster sizes, nine metadata languages
+- Loading is skeleton-first: posters sharpen in as they arrive, and all motion respects *reduce motion*
 
 ---
 
@@ -124,18 +171,19 @@ button that hands the stream straight over.
 | **Routing** | React Router v7 |
 | **Styling** | [Tailwind CSS v4](https://tailwindcss.com), with a hand-built token system |
 | **Icons** | [Lucide](https://lucide.dev) |
-| **Type** | Bricolage Grotesque (display), IBM Plex Sans (body), IBM Plex Mono (data) |
+| **Type** | [Schibsted Grotesk](https://fonts.google.com/specimen/Schibsted+Grotesk) (titles, interface), [JetBrains Mono](https://www.jetbrains.com/lp/mono/) (paths, codecs, times) |
 | **Metadata** | [TMDB API](https://www.themoviedb.org) |
 | **Accounts & sync** | [Firebase](https://firebase.google.com) — anonymous auth + Firestore |
 | **Backend** | Express (`server.js`) for LAN installs; the same `/api` handlers also run as Vercel functions |
 
-Three small API handlers do all the server-side work:
+A few small API handlers do all the server-side work:
 
 | Endpoint | Job |
 |---|---|
 | `api/proxy.js` | Fetches a listing or subtitle file past CORS. Blocks metadata/link-local addresses, re-checks every redirect, host allowlist, streamed size cap, SRT→WebVTT conversion. |
 | `api/parse.js` | Turns directory HTML (h5ai, Apache, nginx, lighttpd) into JSON, using a real HTML parser. |
 | `api/tmdb.js` | TMDB gateway — ranked search, detail, trending, genres, people, studios. Keeps the API key server-side. |
+| `api/subtitles.js` | OpenSubtitles gateway — searches by TMDB id, season and episode, downloads a subtitle, and returns it as WebVTT. Keeps the API key (and your login) server-side, caches results, and explains quota and key problems. |
 
 ---
 
@@ -168,6 +216,8 @@ cp .env.example .env
 | Variable | Purpose |
 |---|---|
 | `TMDB_API_KEY` | Server-side only, never sent to the browser |
+| `OPENSUBTITLES_API_KEY` | Optional. Turns on online subtitles in the player. Free key from [opensubtitles.com/consumers](https://www.opensubtitles.com/consumers). Server-side only. |
+| `OPENSUBTITLES_USERNAME` / `OPENSUBTITLES_PASSWORD` | Your opensubtitles.com login. Downloading a subtitle normally needs an account; without it the daily limit is tiny. |
 | `VITE_FIREBASE_API_KEY` | Bundled into the client by design — secure Firebase with Firestore rules, not by hiding this |
 | `VITE_FIREBASE_AUTH_DOMAIN` | |
 | `VITE_FIREBASE_PROJECT_ID` | |

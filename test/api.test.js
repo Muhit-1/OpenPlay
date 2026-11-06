@@ -70,7 +70,7 @@ test('health says why metadata is unavailable', async () => {
   delete process.env.TMDB_API_KEY;
   try {
     const body = await (await get('/api/health')).json();
-    assert.deepEqual(body, { ok: false, reason: 'no-key', stream: false });
+    assert.deepEqual(body, { ok: false, reason: 'no-key', stream: false, subtitles: false });
   } finally {
     process.env.TMDB_API_KEY = key;
   }

@@ -17,6 +17,7 @@ import { episodeName } from '../lib/history';
 import { normalizeFileUrl } from '../lib/text';
 import { useAsync } from '../lib/useAsync';
 import FilterMenu, { MenuItem, Switch } from './FilterMenu';
+import { FadeImg } from './ui';
 
 export default function EpisodeList({
   files = [], currentUrl, showMeta = null,
@@ -178,8 +179,9 @@ export default function EpisodeList({
                 title={file.name}
                 className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors cursor-pointer"
                 style={{
-                  background: isCurrent ? 'var(--ink-800)' : 'transparent',
-                  boxShadow: isCurrent ? 'inset 2px 0 0 var(--accent)' : 'none',
+                  background: isCurrent
+                    ? 'color-mix(in srgb, var(--accent) 9%, var(--ink-800))'
+                    : 'transparent',
                 }}
                 {...dragLinkProps(file.url, file.name)}
               >
@@ -197,7 +199,7 @@ export default function EpisodeList({
                   style={{ background: 'var(--ink-850)', aspectRatio: panel ? '16 / 9' : undefined }}
                 >
                   {episode?.still ? (
-                    <img src={episode.still} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />
+                    <FadeImg src={episode.still} loading="lazy" className="w-full h-full object-cover" />
                   ) : (
                     <Play size={14} style={{ color: 'var(--text-faint)' }} aria-hidden="true" />
                   )}

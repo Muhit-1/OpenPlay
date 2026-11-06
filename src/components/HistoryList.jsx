@@ -6,7 +6,7 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { History as HistoryIcon, Search, X, ChevronDown, Play, SearchX } from 'lucide-react';
-import { EmptyState } from './ui';
+import { EmptyState, FadeImg } from './ui';
 import { Switch } from './FilterMenu';
 import { getContinueWatching } from '../lib/firebase';
 import { useAsync } from '../lib/useAsync';
@@ -143,8 +143,8 @@ export default function HistoryList() {
       ) : (
         sections.map(section => (
           <section key={section.label} className="mb-6">
-            <h2 className="eyebrow mb-2.5">{section.label}</h2>
-            <ul className="space-y-2">
+            <h2 className="rail-label mb-2.5" style={{ padding: 0 }}>{section.label}</h2>
+            <ul className="space-y-2 reveal-list">
               {section.entries.map(entry => (
                 <Entry
                   key={entry.key}
@@ -205,7 +205,7 @@ function Entry({ entry, open, onToggle }) {
           style={{ background: 'var(--ink-800)', border: '1px solid var(--line)' }}
         >
           {lead.poster
-            ? <img src={lead.poster} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />
+            ? <FadeImg src={lead.poster} loading="lazy" className="w-full h-full object-cover" />
             : <Play size={16} style={{ color: 'var(--text-faint)' }} aria-hidden="true" />}
         </span>
 

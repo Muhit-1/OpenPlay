@@ -154,6 +154,17 @@ export async function getContinueWatching(n = 20) {
   return snap.docs.map(d => d.data());
 }
 
+/** Remove every watch-history entry for this user. */
+export async function clearHistory() {
+  if (!db) {
+    localWrite('local_history', []);
+    return;
+  }
+  const user = await ensureAuth();
+  const snap = await getDocs(query(collection(db, 'watch_history'), where('userId', '==', user.uid)));
+  await Promise.all(snap.docs.map(d => deleteDoc(d.ref)));
+}
+
 // ─── Bookmarks ─────────────────────────────────────────────────────────────
 
 export async function addBookmark(fileUrl, title, poster) {

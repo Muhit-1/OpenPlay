@@ -2,17 +2,20 @@
 //
 // A single source of navigation.
 //
-// The rail used to list genres while the Catalog page listed the same genres
-// again in its own sidebar — two dashboards, side by side, disagreeing about
-// where you were. The rail is now the only navigation, and it names the things
-// you actually browse: what kind of thing, and your own lists.
+// The rail lists what you actually browse (what kind of thing, and your own
+// lists). It is 256px wide, or folds to a 76px icon rail: icons never move, only
+// the labels fade, and tooltips name each destination while folded. One
+// highlight glides to the current destination, so moving between sections reads
+// as travel rather than two things blinking.
 
-import { useState, useEffect } from 'react';
-import { NavLink, Link, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import { Link, useLocation } from 'react-router-dom';
 import {
-  Play, Search, Settings, Clapperboard, Tv, Sparkles,
-  History, Bookmark, Menu, X, HardDrive,
+  Settings, Clapperboard, Tv, Sparkles,
+  History, Bookmark, Menu, X, HardDrive, Home, FolderOpen, PanelLeftClose,
 } from 'lucide-react';
+import { getItem } from '../lib/storage';
+import SearchPalette from './SearchPalette';
 
 const SECTIONS = [
   { to: '/movies',    label: 'Movies',    icon: Clapperboard },
@@ -23,14 +26,64 @@ const SECTIONS = [
 const PERSONAL = [
   { to: '/history',   label: 'History',   icon: History },
   { to: '/watchlist', label: 'Watchlist', icon: Bookmark },
-  { to: '/search',    label: 'Search',    icon: Search },
 ];
 
-export function Rail({ open, onClose }) {
+export function Rail({ open, onClose, collapsed, onToggleCollapsed }) {
   const location = useLocation();
+  const navRef = useRef(null);
+  const indicatorRef = useRef(null);
 
   // Close the mobile drawer whenever navigation happens.
   useEffect(() => { onClose?.(); }, [location.pathname, location.search]); // eslint-disable-line
+
+  // Park the highlight behind whichever link is current.
+  const place = useCallback(() => {
+    const nav = navRef.current;
+    const indicator = indicatorRef.current;
+    if (!nav || !indicator) return;
+
+    const current = nav.querySelector('[aria-current="page"]');
+    if (!current) {
+      indicator.dataset.ready = 'false';
+      return;
+    }
+
+    const y = current.getBoundingClientRect().top - nav.getBoundingClientRect().top;
+
+    // First placement jumps into position; every later one glides.
+    if (indicator.dataset.ready !== 'true') {
+      indicator.style.transition = 'none';
+      indicator.style.setProperty('--rail-y', `${y}px`);
+      void indicator.offsetHeight;            // commit the jump before transitions return
+      indicator.style.transition = '';
+      indicator.dataset.ready = 'true';
+    } else {
+      indicator.style.setProperty('--rail-y', `${y}px`);
+    }
+  }, []);
+
+  useLayoutEffect(() => { place(); }, [location.pathname, place]);
+
+  useEffect(() => {
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [place]);
+
+  // Folding changes the rail's height-independent layout over 380 ms; re-measure
+  // once it settles so the highlight is exactly behind the link.
+  const onTransitionEnd = e => { if (e.propertyName === 'width') place(); };
+
+  // "[" folds and unfolds the rail from anywhere that is not a text field.
+  useEffect(() => {
+    const onKey = e => {
+      if (e.key !== '[' || e.metaKey || e.ctrlKey || e.altKey) return;
+      const tag = document.activeElement?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      onToggleCollapsed?.();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onToggleCollapsed]);
 
   return (
     <>
@@ -44,29 +97,29 @@ export function Rail({ open, onClose }) {
       )}
 
       <nav
-        className={`fixed top-0 left-0 bottom-0 z-50 flex flex-col transition-transform duration-200
+        ref={navRef}
+        onTransitionEnd={onTransitionEnd}
+        className={`rail fixed top-0 left-0 bottom-0 z-50 flex flex-col
           ${open ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}
-        style={{
-          width: 'var(--rail-width)',
-          background: 'var(--ink-900)',
-          borderRight: '1px solid var(--line)',
-        }}
         aria-label="Main"
       >
-        <div className="flex items-center justify-between px-5 h-16 flex-shrink-0">
-          <Link to="/" className="flex items-center gap-2.5">
+        {/* Behind the links, in front of the rail's own background. */}
+        <span ref={indicatorRef} className="rail-indicator" data-ready="false" aria-hidden="true" />
+
+        <div className="rail-brand">
+          <Link to="/" className="flex items-center gap-3 rounded-lg min-w-0" aria-label="OpenPlay home">
             <img
               src={`${import.meta.env.BASE_URL}logo.png`}
               alt=""
-              width={28}
-              height={28}
-              className="rounded-md flex-shrink-0"
+              width={36}
+              height={36}
+              className="rounded-[11px] flex-shrink-0"
             />
-            <span className="font-display text-[18px] tracking-tight">OpenPlay</span>
+            <span className="rail-lbl font-display text-[19px] leading-none">OpenPlay</span>
           </Link>
           <button
             onClick={onClose}
-            className="lg:hidden p-1.5 rounded-md"
+            className="lg:hidden ml-auto p-1.5 rounded-md"
             style={{ color: 'var(--text-dim)' }}
             aria-label="Close menu"
           >
@@ -74,21 +127,37 @@ export function Rail({ open, onClose }) {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto no-scrollbar px-3 pb-6">
-          <div className="space-y-0.5 mb-6">
-            <RailLink to="/" label="Home" icon={Play} end />
+        <div className="flex-1 overflow-y-auto no-scrollbar px-3 pt-[18px] pb-3">
+          <div className="space-y-0.5">
+            <RailLink to="/" label="Home" icon={Home} end />
             {SECTIONS.map(item => <RailLink key={item.to} {...item} />)}
           </div>
 
-          <p className="eyebrow px-3 mb-2">Yours</p>
-          <div className="space-y-0.5 mb-6">
+          <p className="rail-label"><span className="rail-lbl">Yours</span></p>
+          <div className="space-y-0.5">
             {PERSONAL.map(item => <RailLink key={item.to} {...item} />)}
           </div>
         </div>
 
-        <div className="px-3 py-3 flex-shrink-0 space-y-0.5" style={{ borderTop: '1px solid var(--line)' }}>
-          <RailLink to="/browse" label="Files" icon={HardDrive} />
-          <RailLink to="/settings" label="Settings" icon={Settings} />
+        <div className="px-3 pt-3 pb-3 flex-shrink-0" style={{ borderTop: '1px solid var(--line)' }}>
+          <ServerCard />
+          <div className="space-y-0.5">
+            <RailLink to="/browse" label="Files" icon={FolderOpen} />
+            <RailLink to="/settings" label="Settings" icon={Settings} />
+          </div>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="rail-toggle hidden lg:flex"
+            data-tip={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-pressed={collapsed}
+            aria-keyshortcuts="["
+          >
+            <PanelLeftClose size={20} strokeWidth={1.9} className="flex-shrink-0" aria-hidden="true" />
+            <span className="rail-lbl">{collapsed ? 'Expand' : 'Collapse'}</span>
+            <span className="rail-lbl ml-auto"><kbd className="kbd">[</kbd></span>
+          </button>
         </div>
       </nav>
     </>
@@ -104,56 +173,65 @@ function RailLink({ to, label, icon: Icon, end = false }) {
     : location.pathname === path || location.pathname.startsWith(path + '/');
 
   return (
-    <NavLink
+    <Link
       to={to}
-      end={end}
-      className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-[15px] transition-colors"
-      style={{
-        color: isActive ? 'var(--text)' : 'var(--text-dim)',
-        background: isActive ? 'var(--ink-800)' : 'transparent',
-        fontWeight: isActive ? 600 : 400,
-        boxShadow: isActive ? 'inset 2px 0 0 var(--accent)' : 'none',
-      }}
+      className="rail-link"
+      data-tip={label}
+      aria-current={isActive ? 'page' : undefined}
     >
-      {Icon && <Icon size={16} aria-hidden="true" />}
-      <span className="truncate">{label}</span>
-    </NavLink>
+      {Icon && <Icon className="rail-icon flex-shrink-0" size={20} strokeWidth={1.9} aria-hidden="true" />}
+      <span className="rail-lbl">{label}</span>
+    </Link>
+  );
+}
+
+/** Which server this is pointed at, and a way to change it. */
+function ServerCard() {
+  const url = getItem('isp_url');
+  const host = url ? url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') : '';
+
+  return (
+    <Link
+      to="/settings"
+      className="rail-server"
+      data-tip={host ? `Server ${host}` : 'Connect a server'}
+      aria-label={host ? `Server ${host}, open settings` : 'Connect a server'}
+    >
+      <span
+        className="relative w-[34px] h-[34px] rounded-[10px] flex items-center justify-center flex-shrink-0 ml-0.5"
+        style={{ background: 'var(--ink-800)', color: host ? 'var(--accent)' : 'var(--text-dim)' }}
+      >
+        <HardDrive size={17} strokeWidth={1.9} aria-hidden="true" />
+        {host && (
+          <span
+            className="absolute rounded-full"
+            style={{
+              right: -2, top: -2, width: 9, height: 9, background: 'var(--ok)',
+              border: '2px solid var(--ink-850)', boxShadow: '0 0 8px var(--ok)',
+            }}
+            aria-hidden="true"
+          />
+        )}
+      </span>
+      <span className="rail-lbl min-w-0" style={{ maxWidth: 150 }}>
+        <span className="block text-[12px] leading-tight" style={{ color: 'var(--text-faint)' }}>
+          {host ? 'Server' : 'No server yet'}
+        </span>
+        <span className="block mono text-[13px] leading-tight truncate" style={{ color: 'var(--text-soft)' }}>
+          {host || 'Connect one'}
+        </span>
+      </span>
+    </Link>
   );
 }
 
 export function TopBar({ onOpenMenu }) {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-  // The URL is the source of truth for what was searched; `typed` only holds
-  // edits made since. Deriving it this way keeps the field in step with the
-  // address bar without an effect that writes state on every navigation.
-  const urlQuery = location.pathname === '/search'
-    ? new URLSearchParams(location.search).get('q') || ''
-    : '';
-  const [typed, setTyped] = useState(null);
-  const [lastUrlQuery, setLastUrlQuery] = useState(urlQuery);
-
-  if (urlQuery !== lastUrlQuery) {
-    setLastUrlQuery(urlQuery);
-    setTyped(null);
-  }
-
-  const query = typed ?? urlQuery;
-  const setQuery = setTyped;
-
-  const submit = e => {
-    e.preventDefault();
-    const q = query.trim();
-    if (q) navigate(`/search?q=${encodeURIComponent(q)}`);
-  };
-
   return (
     <header
-      className="sticky top-0 z-30 flex items-center gap-3 h-16 px-4 sm:px-6 flex-shrink-0"
+      className="sticky top-0 z-30 flex items-center gap-3.5 h-[68px] px-4 sm:px-8 flex-shrink-0"
       style={{
-        background: 'color-mix(in srgb, var(--ink-950) 88%, transparent)',
-        backdropFilter: 'blur(12px)',
+        background: 'color-mix(in srgb, var(--ink-950) 86%, transparent)',
+        backdropFilter: 'blur(14px)',
         borderBottom: '1px solid var(--line)',
       }}
     >
@@ -165,31 +243,8 @@ export function TopBar({ onOpenMenu }) {
         <Menu size={18} />
       </button>
 
-      <form onSubmit={submit} className="flex-1 max-w-xl">
-        <div className="control flex items-center gap-2 px-3 h-10">
-          <Search size={16} style={{ color: 'var(--text-dim)' }} aria-hidden="true" />
-          <input
-            type="search"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Search films, series, cast and your server"
-            aria-label="Search"
-            className="flex-1 bg-transparent text-[15px] outline-none min-w-0"
-            style={{ color: 'var(--text)' }}
-          />
-        </div>
-      </form>
-
-      <div className="flex-1" />
-
-      <Link
-        to="/settings"
-        className="p-2 rounded-lg transition-colors"
-        style={{ color: 'var(--text-dim)' }}
-        aria-label="Settings"
-      >
-        <Settings size={18} />
-      </Link>
+      <SearchPalette />
     </header>
   );
 }
+

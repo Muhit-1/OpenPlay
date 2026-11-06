@@ -11,7 +11,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { SearchX, Square, Search as SearchIcon, HardDrive, Clapperboard, Users } from 'lucide-react';
 import PosterCard from '../components/PosterCard';
-import { EmptyState, Spinner, PosterSkeleton } from '../components/ui';
+import { EmptyState, Spinner, PosterSkeleton, FadeImg } from '../components/ui';
 import { listDir } from '../lib/server';
 import { searchTmdb } from '../lib/tmdb';
 import { useAsync } from '../lib/useAsync';
@@ -91,7 +91,6 @@ export default function Search() {
   return (
     <div className="page-enter px-5 sm:px-7 py-7">
       <header className="mb-8">
-        <p className="eyebrow mb-2">Search</p>
         <h1 className="font-display text-3xl mb-5">
           {query ? <>Results for &ldquo;{query}&rdquo;</> : 'Find something to watch'}
         </h1>
@@ -209,7 +208,7 @@ function PersonCard({ person }) {
         style={{ background: 'var(--ink-850)', border: '1px solid var(--line)' }}
       >
         {person.profile ? (
-          <img src={person.profile} alt="" loading="lazy" className="w-full h-full object-cover" />
+          <FadeImg src={person.profile} loading="lazy" className="w-full h-full object-cover" />
         ) : (
           <span
             className="w-full h-full flex items-center justify-center font-display text-xl"

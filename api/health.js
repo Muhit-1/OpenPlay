@@ -13,8 +13,9 @@ export default async function handler(req, res) {
 
   const key = process.env.TMDB_API_KEY;
   const stream = process.env.OPENPLAY_STREAM === '1';
+  const subtitles = Boolean(String(process.env.OPENSUBTITLES_API_KEY || '').trim());
   if (!key) {
-    return res.status(200).json({ ok: false, reason: 'no-key', stream });
+    return res.status(200).json({ ok: false, reason: 'no-key', stream, subtitles });
   }
 
   const started = Date.now();
@@ -23,10 +24,10 @@ export default async function handler(req, res) {
     const url  = new URL(`${process.env.TMDB_BASE_URL || 'https://api.themoviedb.org/3'}/configuration`);
     if (auth.apiKey) url.searchParams.set('api_key', auth.apiKey);
     const r = await fetch(url, { headers: auth.headers, signal: AbortSignal.timeout(6000) });
-    if (r.status === 401) return res.status(200).json({ ok: false, reason: 'bad-key', stream });
-    if (!r.ok) return res.status(200).json({ ok: false, reason: 'tmdb-error', status: r.status, stream });
-    return res.status(200).json({ ok: true, ms: Date.now() - started, stream });
+    if (r.status === 401) return res.status(200).json({ ok: false, reason: 'bad-key', stream, subtitles });
+    if (!r.ok) return res.status(200).json({ ok: false, reason: 'tmdb-error', status: r.status, stream, subtitles });
+    return res.status(200).json({ ok: true, ms: Date.now() - started, stream, subtitles });
   } catch (err) {
-    return res.status(200).json({ ok: false, reason: 'unreachable', detail: err.message, stream });
+    return res.status(200).json({ ok: false, reason: 'unreachable', detail: err.message, stream, subtitles });
   }
 }
