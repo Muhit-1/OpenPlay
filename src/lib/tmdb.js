@@ -66,6 +66,24 @@ export async function fetchMeta(filename, forcedKind = null) {
   }).catch(() => ({ found: false, title }));
 }
 
+/**
+ * Light TMDB lookup for building the catalogue index: one request, and just
+ * the fields filters need (genres, rating, votes, language, year).
+ */
+export function fetchBrief(filename, forcedKind = null) {
+  const parsed = parseRelease(filename);
+  const kind = forcedKind || parsed.kind;
+  const lang = getLang();
+
+  if (!parsed.title) return Promise.resolve({ found: false });
+
+  return cached(`brief|${parsed.title}|${parsed.year}|${kind}|${lang}`, async () => {
+    const params = new URLSearchParams({ title: parsed.title, type: kind, lang, brief: '1' });
+    if (parsed.year) params.set('year', parsed.year);
+    return getJSON(`/api/tmdb?${params}`);
+  });
+}
+
 /** TMDB detail by id. */
 export function fetchDetail(tmdbId, mediaType = 'movie') {
   const lang = getLang();

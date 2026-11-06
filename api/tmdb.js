@@ -155,7 +155,7 @@ export default async function handler(req, res) {
     title, year, type = 'movie', lang = 'en-US',
     trending, mediaType = 'all', timeWindow = 'week',
     showId, season, tmdbId, genre, personId, personName,
-    query, companyId,
+    query, companyId, brief,
     page = '1', sortBy = 'popularity.desc',
   } = req.query;
 
@@ -299,6 +299,25 @@ export default async function handler(req, res) {
     if (ranked.length === 0) return res.status(200).json({ found: false, title });
 
     const best   = ranked[0];
+
+    // Brief mode is for indexing a whole library: the search hit already carries
+    // genres, rating, language and votes, so the second (detail) call is skipped.
+    if (brief) {
+      const hit = best.item;
+      return res.status(200).json({
+        found:    true,
+        id:       hit.id,
+        type:     mt,
+        title:    hit.title || hit.name,
+        year:     (hit.release_date || hit.first_air_date || '').slice(0, 4),
+        rating:   round1(hit.vote_average),
+        votes:    hit.vote_count || 0,
+        poster:   poster(hit.poster_path),
+        language: hit.original_language || null,
+        genreIds: hit.genre_ids || [],
+        matchScore: Math.round(best.nameScore * 100) / 100,
+      });
+    }
     const detail = await tmdb(`/${mt}/${best.item.id}`, { append_to_response: 'credits,videos', language: lang });
 
     return res.status(200).json({

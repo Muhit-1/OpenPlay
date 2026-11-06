@@ -20,6 +20,7 @@ import { fetchDirectory, fetchTrending, fetchByGenre } from '../lib/tmdb';
 import { getContinueWatching } from '../lib/firebase';
 import { librariesFor, libraryIndex, libraryTitles } from '../lib/server';
 import { getItem } from '../lib/storage.js';
+import { useTopRated } from '../lib/useCatalog';
 
 const GENRE_ROWS = [
   { id: 28,  label: 'Action',          key: 'action' },
@@ -139,6 +140,9 @@ export default function Home() {
         </div>
       )}
 
+      <TopRatedShelf category="movies" title="Top rated films" />
+      <TopRatedShelf category="series" title="Top rated series" />
+
       {server.state === 'loading' ? (
         <div className="px-5 sm:px-7 mb-9"><Spinner label="Reading directory" /></div>
       ) : (
@@ -172,6 +176,21 @@ export default function Home() {
       ))}
     </div>
   );
+}
+
+/* ── Best-rated titles you actually have ─────────────────────────────────── */
+
+function TopRatedShelf({ category, title }) {
+  const libraries = useMemo(
+    () => librariesFor(category).filter(l => !l.secondary && l.online !== false),
+    [category]
+  );
+  const files = useTopRated(libraries);
+
+  // Needs the index to have matched a good number of titles first.
+  if (files.length < 6) return null;
+
+  return <Row eyebrow="On your server" title={title} files={files} moreHref={`/${category}?sort=top`} />;
 }
 
 /* ── Server instrument panel ─────────────────────────────────────────────── */

@@ -84,6 +84,19 @@ of the film you wanted.
 It also works out how each library is organised — year buckets, suffixed years
 (`(2025) 1080p`), alphabetical buckets, or flat — instead of assuming one layout.
 
+### Filters that know your whole library
+
+On Movies, Series and Animation you can filter by **genre**, **minimum rating**,
+**release decade** and **language**, and sort by **newest**, **top rated** or
+**most voted**. OpenPlay reads your library once in the background (a progress
+bar shows it), looks every title up on TMDB, and keeps the result in your browser
+— so filtering is instant and a reload makes no new requests. Home gets a
+**Top rated** shelf of the best-rated titles you actually have.
+
+Ratings are TMDB's, not IMDb's, and "top rated" only counts titles with enough
+votes for the number to mean something. Titles TMDB cannot match have no genre or
+rating, so any filter leaves them out (they still appear unfiltered).
+
 ### Search that covers both
 
 One box searches TMDB **and** your server. Search a title to see whether it
@@ -318,6 +331,7 @@ openplay/
 │   │   ├── Browse.jsx       # Raw directory browser
 │   │   └── Settings.jsx
 │   └── lib/
+│       ├── catalog.js   # Background index of every title (genre, rating, year, language)
 │       ├── discover.js  # Finds every library from one portal address
 │       ├── release.js   # Release-name parser and title scoring
 │       ├── server.js    # Library shape detection and title lookup

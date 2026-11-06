@@ -14,6 +14,7 @@ import { downloadVlcRegistryFile, isVlcReady } from '../lib/vlc';
 import { Notice } from '../components/ui';
 import { getItem, removeItem, setItem } from '../lib/storage.js';
 import { normalizeServerAddress } from '../lib/url';
+import { clearIndex, forgetStarted } from '../lib/catalog';
 import { apiBase, setApiBase, usesHelper, pingApi, DEFAULT_HELPER } from '../lib/api';
 
 const CATEGORY_ICON = {
@@ -258,6 +259,8 @@ export default function Settings() {
 
       <HelperSection />
 
+      <CatalogSection />
+
       <Section title="Accent">
         <div className="flex flex-wrap gap-2.5">
           {ACCENTS.map(a => (
@@ -501,6 +504,29 @@ function HelperSection() {
           {result.text}
         </p>
       )}
+    </Section>
+  );
+}
+
+/** The filter index: built in the background, kept in this browser. */
+function CatalogSection() {
+  const [message, setMessage] = useState('');
+
+  const rebuild = async () => {
+    await clearIndex();
+    forgetStarted();
+    setMessage('Index cleared. It rebuilds in the background the next time you open Movies, Series or Animation.');
+  };
+
+  return (
+    <Section
+      title="Filter index"
+      hint="Genre, rating, year and language filters rely on an index of your library, built in the background from TMDB and stored in this browser. It updates itself; rebuild it only if filters look wrong."
+    >
+      <button onClick={rebuild} className="control px-4 h-11 text-[15px] font-medium">
+        Rebuild index
+      </button>
+      {message && <p className="mt-3 text-[15px]" role="status" style={{ color: 'var(--ok)' }}>{message}</p>}
     </Section>
   );
 }

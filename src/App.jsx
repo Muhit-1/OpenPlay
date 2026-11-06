@@ -42,9 +42,9 @@ function Shell() {
           <Routes>
             <Route path="/"          element={<Home />} />
 
-            <Route path="/movies"    element={<Library category="movies" />} />
-            <Route path="/series"    element={<Library category="series" />} />
-            <Route path="/animation" element={<Library category="animation" />} />
+            <Route path="/movies"    element={<Library key="movies" category="movies" />} />
+            <Route path="/series"    element={<Library key="series" category="series" />} />
+            <Route path="/animation" element={<Library key="animation" category="animation" />} />
 
             <Route path="/history"   element={<MyList mode="history" />} />
             <Route path="/watchlist" element={<MyList mode="watchlist" />} />
